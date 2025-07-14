@@ -124,14 +124,6 @@ class sSRG:
         H_now = self.get_H()
         self.eta = self.commutator(self.Tkin, H_now)
 
-    def get_E(self):
-        Nq = self.num_mesh
-        H = np.zeros((Nq, Nq))
-        for (i, j), fij in self.walkers.items():
-            H[i, j] += fij
-        E_now = self.num_H0 / self.target_walker_number * np.linalg.eigvalsh(H).min()
-        return E_now
-
     def get_H(self) -> np.ndarray:
         Nq = self.num_mesh
         H = np.zeros((Nq, Nq))
@@ -142,6 +134,11 @@ class sSRG:
     def get_V(self) -> np.ndarray:
         V_now = self.get_H() - self.Tkin
         return self.undress_weights(V_now)
+
+    def get_E(self):
+        H_now = self.get_H()
+        E_now = np.linalg.eigvalsh(H_now).min()
+        return E_now
 
     def abs_cut_to(self, num: float, target: float) -> float:
         abs_num = abs(num)
