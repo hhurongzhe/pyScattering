@@ -30,7 +30,7 @@ class sSRG:
         self.eta: np.ndarray
         self.setup_generator()
 
-        self.is_initiator: bool = False
+        self.initiator_approximation: bool = params["initiator_approximation"]
         self.target_walker_number: float = params["target_walker_number"]
         self.random_sampling: bool = params["random_sampling"]
         self.loops: int = params["loops"]
@@ -38,10 +38,10 @@ class sSRG:
         self.A: int = params["A"]
         self.xi: float = params["xi"]
         self.zeta: float = params["zeta"]
-        self.initiator_threshold: int = params["initiator_threshold"]
+        self.initiator_threshold: float = params["initiator_threshold"]
         self.seed: int = params["seed"]
-        self.min_spawn_num: float = 0
-        self.min_walker_num: float = 0
+        self.min_spawn_num: float = 0.0
+        self.min_walker_num: float = 0.0
         self.S: float = 0.0
         self.walkers: dict = {}  # key = (i, j); value = fij
         self.new_walkers: List[Tuple[int, int, bool, float]] = []
@@ -177,25 +177,22 @@ class sSRG:
         self.normalize_walker_number()
         # print("finish initializing exact walkers.")
 
-    # using importance sampling to initialize walkers
+    # using importance sampling to initialize walkers, need debug
     def initialize_random_walkers(self):
         Nq = self.num_mesh
-        candidate_i = np.random.randint(0, Nq, self.target_walker_number)
-        candidate_j = np.random.randint(0, Nq, self.target_walker_number)
-        weights = self.H0[candidate_i, candidate_j]
-        normalized_weights = weights / np.sum(weights)
-        chosen_indices = np.random.choice(np.arange(self.target_walker_number), size=self.target_walker_number, p=normalized_weights, replace=True)
-        walkers_sir_i = candidate_i[chosen_indices]
-        walkers_sir_j = candidate_j[chosen_indices]
-        for idx in range(self.target_walker_number):
-            i = walkers_sir_i[idx]
-            j = walkers_sir_j[idx]
-            Hij = self.H0[i, j]
-            if (i, j) not in self.walkers:
-                self.walkers[(i, j)] = math.copysign(1.0, Hij)
-            else:
-                self.walkers[(i, j)] += math.copysign(1.0, Hij)
-        # print("finish initializing random walkers.")
+        self.walkers.clear()
+        prob_weights = np.abs(self.H0).flatten()
+        total_abs_weight = np.sum(prob_weights)
+        if total_abs_weight == 0:
+            print("Warning: Initial Hamiltonian is all zeros. No walkers initialized.")
+            return
+        prob_distribution = prob_weights / total_abs_weight
+        num_walkers_to_sample = int(self.target_walker_number)
+        chosen_flat_indices = np.random.choice(np.arange(Nq * Nq), size=num_walkers_to_sample, p=prob_distribution, replace=True)
+        walkers_i, walkers_j = np.unravel_index(chosen_flat_indices, (Nq, Nq))
+        for i, j in zip(walkers_i, walkers_j):
+            sign = math.copysign(1.0, self.H0[i, j])
+            self.walkers[(i, j)] = self.walkers.get((i, j), 0.0) + sign
 
     def make_walkers_symmetric(self):
         for (i, j), cij in list(self.walkers.items()):
@@ -225,13 +222,9 @@ class sSRG:
                 del self.walkers[(i, j)]
                 continue
             Nij = math.floor(Cij + random.uniform(0, 1))
-            eta_ii = self.eta[i, i]
-            eta_jj = self.eta[j, j]
-            # pd = self.d_tau * (-eta_ii + eta_jj - self.S)
-            pd = self.d_tau * (-eta_ii + eta_jj)
-            self.walkers[(i, j)] = cij - pd * Nij  # diagonal step
-            # is_initiator = self.is_initiator and (abs(Cij) > self.initiator_threshold)
             is_initiator = True
+            if self.initiator_approximation:
+                is_initiator = abs(Cij) > self.initiator_threshold
             for _ in range(abs(Nij)):
                 k, l = 0, 0
                 while True:
@@ -240,13 +233,15 @@ class sSRG:
                     if (k, l) != (i, j):
                         break
                 eta_ki = self.eta[k, i]
-                eta_lj = self.eta[l, j]
+                eta_jl = self.eta[j, l]
                 invp_ik = self.num_mesh - 1
                 invp_jl = self.num_mesh - 1
-                spawn_num_ik = basic_math.sign(Nij) * self.d_tau * eta_ki * invp_ik
-                spawn_num_jl = -basic_math.sign(Nij) * self.d_tau * eta_lj * invp_jl
-                # spawn_num_ik = self.abs_cut_to(spawn_num_ik, self.min_spawn_num)
-                # spawn_num_jl = self.abs_cut_to(spawn_num_jl, self.min_spawn_num)
+                p_spawn_ik = self.d_tau * np.abs(eta_ki) * invp_ik
+                p_spawn_jl = self.d_tau * np.abs(eta_jl) * invp_jl
+                spawn_num_ik = basic_math.sign(Nij) * basic_math.sign(eta_ki) * p_spawn_ik
+                spawn_num_jl = -basic_math.sign(Nij) * basic_math.sign(eta_jl) * p_spawn_jl
+                spawn_num_ik = self.abs_cut_to(spawn_num_ik, self.min_spawn_num)
+                spawn_num_jl = self.abs_cut_to(spawn_num_jl, self.min_spawn_num)
                 if spawn_num_ik == 0.0 and spawn_num_jl == 0.0:
                     continue
                 # spawning step

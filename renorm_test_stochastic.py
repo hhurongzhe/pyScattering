@@ -19,11 +19,12 @@ params["q_number"] = 100
 params["target_walker_number"] = 10000
 params["random_sampling"] = False
 params["loops"] = 1
-params["d_tau"] = 1e-6
+params["d_tau"] = 1e-7
 params["A"] = 1
 params["xi"] = 0.1
 params["zeta"] = 0.0025
-params["initiator_threshold"] = 1
+params["initiator_approximation"] = False
+params["initiator_threshold"] = 0.1
 params["seed"] = 0
 
 
@@ -56,7 +57,8 @@ elif mtx.max() <= 0:
     norm = TwoSlopeNorm(vmin=mtx.min(), vmax=0)
 else:
     norm = TwoSlopeNorm(vmin=mtx.min(), vcenter=0, vmax=mtx.max())
-c = plt.imshow(mtx, cmap="RdBu_r", interpolation="bicubic", extent=(p.min(), p.max(), pp.min(), pp.max()), origin="lower", norm=norm)
+# c = plt.imshow(mtx, cmap="RdBu_r", interpolation="bicubic", extent=(p.min(), p.max(), pp.min(), pp.max()), origin="lower", norm=norm)
+c = plt.imshow(mtx, cmap="RdBu_r", interpolation="none", extent=(p.min(), p.max(), pp.min(), pp.max()), origin="lower", norm=norm)
 plt.xlabel(r"$p$ (MeV)", fontsize=16)
 plt.ylabel(r"$p'$ (MeV)", fontsize=16)
 plt.title(r"$\lambda=$" + str(round(Lambda, 2)) + r"$\;\mathrm{fm}^{-1}$", fontsize=16)
