@@ -15,7 +15,7 @@ def header_message():
     print("\n\n")
     print(headersymbol * headerwidth)
     print(headersymbol)
-    print(headersymbol + " nucleon-nucleon scattering solver with chiral Hamiltonian")
+    print(headersymbol + " nucleon-nucleon scattering solver")
     print(headersymbol + " written by " + author)
     print(headersymbol + " Affiliation:" + affiliation)
     print(headersymbol + " email      :" + email)
@@ -28,12 +28,4 @@ def footer_message():
 
 
 def section_message(x):
-    print(
-        "\n"
-        + "*" * (printwidthleftmargin)
-        + " "
-        + x
-        + " "
-        + "*" * (printwidth - len(x))
-        + "\n"
-    )
+    print("\n" + "*" * (printwidthleftmargin) + " " + x + " " + "*" * (printwidth - len(x)) + "\n")

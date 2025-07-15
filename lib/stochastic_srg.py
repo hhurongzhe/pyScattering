@@ -11,7 +11,7 @@ import constants as const
 import basic_math
 
 
-# stochastic SRG flow equation for the two-nucleon potential
+# stochastic SRG flow equation for the two-nucleon potential, test in progress.
 class sSRG:
 
     def __init__(self, params: dict):
@@ -199,15 +199,15 @@ class sSRG:
 
     def make_walkers_symmetric(self):
         for (i, j), cij in list(self.walkers.items()):
-            if i >= j:
+            if i == j:
                 continue
             if (j, i) not in self.walkers:
                 self.walkers[(i, j)] = cij / 2
                 self.walkers[(j, i)] = cij / 2
             else:
-                num_ij = (self.walkers[(i, j)] + self.walkers[(j, i)]) / 2
-                self.walkers[(i, j)] = num_ij
-                self.walkers[(j, i)] = num_ij
+                num_average = (self.walkers[(i, j)] + self.walkers[(j, i)]) / 2
+                self.walkers[(i, j)] = num_average
+                self.walkers[(j, i)] = num_average
 
     def print_walkers(self):
         print("walkers:")

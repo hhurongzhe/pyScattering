@@ -16,7 +16,7 @@ params["potential_type"] = "n3loemn500"
 params["q_min"] = 1e-8
 params["q_max"] = 5.0
 params["q_number"] = 100
-params["target_walker_number"] = 100000
+params["target_walker_number"] = 10000
 params["random_sampling"] = False
 params["loops"] = 1
 params["d_tau"] = 1e-6
@@ -33,7 +33,7 @@ utility.header_message()
 
 utility.section_message("Initialization")
 
-s_target = 1e-2  # in fm^(4)
+s_target = 1e-1  # in fm^(4)
 Lambda = pow(s_target, -1 / 4)  # in fm^(-1)
 print("Lambda = ", Lambda, "fm^(-1)")
 units_factor = const.MN**2 / const.hbarc**4
