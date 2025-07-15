@@ -16,6 +16,12 @@ class sSRG:
 
     def __init__(self, params: dict):
         self.potential: chiral_potential = chiral_potential.two_nucleon_potential(params["potential_type"])
+        self.flag: str = params["flag"]
+        self.coupled_channel: bool = params["coupled_channel"]
+        if self.coupled_channel:
+            self.J = params["quantum_numbers"]  # J
+        else:
+            self.quantum_numbers: List[int] = params["quantum_numbers"]  # [ll, l, j, s, tz]
         self.num_mesh: int
         self.mesh_q: np.ndarray
         self.weight_q: np.ndarray
@@ -48,6 +54,7 @@ class sSRG:
         self.tau_loops_trace: List[List[float]] = []
         self.number_loops_trace: List[List[float]] = []
         self.shift_loops_trace: List[List[float]] = []
+        self.mtx_trace: List[np.ndarray] = []
 
     # commutator, arguments A and B matrices
     @staticmethod
@@ -67,24 +74,45 @@ class sSRG:
 
     def setup_kinetic(self):
         Nq = self.num_mesh
-        self.Tkin = np.zeros((Nq, Nq))
+        Tkin = np.zeros((Nq, Nq))
         for i in range(Nq):
             pi = self.mesh_q[i]
-            self.Tkin[i, i] = pi**2 / const.MN
+            Tkin[i, i] = pi**2 / const.MN
+        if not self.coupled_channel:
+            self.Tkin = Tkin
+        else:
+            self.Tkin = np.block([[Tkin, np.zeros((Nq, Nq))], [np.zeros((Nq, Nq)), Tkin]])
         print("finish setting up kinetic energy matrix.")
 
     def setup_initial_potential(self):
-        # consider np 1S0 channel for now.
-        ll, l, j, s, tz = 0, 0, 0, 0, 0
         Nq = self.num_mesh
-        self.V0 = np.zeros((Nq, Nq))
-        for idx_pp in range(Nq):
-            for idx_p in range(Nq):
-                pp = self.mesh_q[idx_pp]
-                p = self.mesh_q[idx_p]
-                wpp = self.weight_q[idx_pp]
-                wp = self.weight_q[idx_p]
-                self.V0[idx_pp, idx_p] = np.sqrt(wpp * wp) * pp * p * self.potential.potential(ll, l, pp, p, j, s, tz)
+        if not self.coupled_channel:
+            ll, l, j, s, tz = self.quantum_numbers
+            self.V0 = np.zeros((Nq, Nq))
+            for idx_pp in range(Nq):
+                for idx_p in range(Nq):
+                    pp = self.mesh_q[idx_pp]
+                    p = self.mesh_q[idx_p]
+                    wpp = self.weight_q[idx_pp]
+                    wp = self.weight_q[idx_p]
+                    self.V0[idx_pp, idx_p] = np.sqrt(wpp * wp) * pp * p * self.potential.potential(ll, l, pp, p, j, s, tz)
+        else:
+            J = self.J
+            V0_mm = np.zeros((Nq, Nq))
+            V0_mp = np.zeros((Nq, Nq))
+            V0_pm = np.zeros((Nq, Nq))
+            V0_pp = np.zeros((Nq, Nq))
+            for idx_pp in range(Nq):
+                for idx_p in range(Nq):
+                    pp = self.mesh_q[idx_pp]
+                    p = self.mesh_q[idx_p]
+                    wpp = self.weight_q[idx_pp]
+                    wp = self.weight_q[idx_p]
+                    V0_mm[idx_pp, idx_p] = np.sqrt(wpp * wp) * pp * p * self.potential.potential(J - 1, J - 1, pp, p, J, 1, 0)
+                    V0_mp[idx_pp, idx_p] = np.sqrt(wpp * wp) * pp * p * self.potential.potential(J - 1, J + 1, pp, p, J, 1, 0)
+                    V0_pm[idx_pp, idx_p] = np.sqrt(wpp * wp) * pp * p * self.potential.potential(J + 1, J - 1, pp, p, J, 1, 0)
+                    V0_pp[idx_pp, idx_p] = np.sqrt(wpp * wp) * pp * p * self.potential.potential(J + 1, J + 1, pp, p, J, 1, 0)
+            self.V0 = np.block([[V0_mm, V0_mp], [V0_pm, V0_pp]])
         print("finish setting up initial potential matrix.")
 
     def setup_generator(self):
@@ -94,25 +122,49 @@ class sSRG:
     # Dress the weights for mtx, MeV^(-2) to MeV
     def dress_weights(self, mtx: np.ndarray):
         Nq = self.num_mesh
-        for idx_pp in range(Nq):
-            for idx_p in range(Nq):
-                pp = self.mesh_q[idx_pp]
-                p = self.mesh_q[idx_p]
-                wpp = self.weight_q[idx_pp]
-                wp = self.weight_q[idx_p]
-                mtx[idx_pp, idx_p] *= np.sqrt(wpp * wp) * pp * p
+        if not self.coupled_channel:
+            for idx_pp in range(Nq):
+                for idx_p in range(Nq):
+                    pp = self.mesh_q[idx_pp]
+                    p = self.mesh_q[idx_p]
+                    wpp = self.weight_q[idx_pp]
+                    wp = self.weight_q[idx_p]
+                    mtx[idx_pp, idx_p] *= np.sqrt(wpp * wp) * pp * p
+        else:
+            for idx_pp in range(Nq):
+                for idx_p in range(Nq):
+                    pp = self.mesh_q[idx_pp]
+                    p = self.mesh_q[idx_p]
+                    wpp = self.weight_q[idx_pp]
+                    wp = self.weight_q[idx_p]
+                    mtx[idx_pp, idx_p] *= np.sqrt(wpp * wp) * pp * p
+                    mtx[idx_pp + Nq, idx_p] *= np.sqrt(wpp * wp) * pp * p
+                    mtx[idx_pp, idx_p + Nq] *= np.sqrt(wpp * wp) * pp * p
+                    mtx[idx_pp + Nq, idx_p + Nq] *= np.sqrt(wpp * wp) * pp * p
         return mtx
 
     # Undress the weights for mtx, MeV to MeV^(-2)
     def undress_weights(self, mtx: np.ndarray):
         Nq = self.num_mesh
-        for idx_pp in range(Nq):
-            for idx_p in range(Nq):
-                pp = self.mesh_q[idx_pp]
-                p = self.mesh_q[idx_p]
-                wpp = self.weight_q[idx_pp]
-                wp = self.weight_q[idx_p]
-                mtx[idx_pp, idx_p] /= np.sqrt(wpp * wp) * pp * p
+        if not self.coupled_channel:
+            for idx_pp in range(Nq):
+                for idx_p in range(Nq):
+                    pp = self.mesh_q[idx_pp]
+                    p = self.mesh_q[idx_p]
+                    wpp = self.weight_q[idx_pp]
+                    wp = self.weight_q[idx_p]
+                    mtx[idx_pp, idx_p] /= np.sqrt(wpp * wp) * pp * p
+        else:
+            for idx_pp in range(Nq):
+                for idx_p in range(Nq):
+                    pp = self.mesh_q[idx_pp]
+                    p = self.mesh_q[idx_p]
+                    wpp = self.weight_q[idx_pp]
+                    wp = self.weight_q[idx_p]
+                    mtx[idx_pp, idx_p] /= np.sqrt(wpp * wp) * pp * p
+                    mtx[idx_pp + Nq, idx_p] /= np.sqrt(wpp * wp) * pp * p
+                    mtx[idx_pp, idx_p + Nq] /= np.sqrt(wpp * wp) * pp * p
+                    mtx[idx_pp + Nq, idx_p + Nq] /= np.sqrt(wpp * wp) * pp * p
         return mtx
 
     def get_number(self) -> float:
@@ -126,7 +178,10 @@ class sSRG:
 
     def get_H(self) -> np.ndarray:
         Nq = self.num_mesh
-        H = np.zeros((Nq, Nq))
+        if not self.coupled_channel:
+            H = np.zeros((Nq, Nq))
+        else:
+            H = np.zeros((2 * Nq, 2 * Nq))
         for (i, j), fij in self.walkers.items():
             H[i, j] += fij
         return self.num_H0 / self.target_walker_number * H
@@ -170,8 +225,11 @@ class sSRG:
 
     def initialize_exact_walkers(self):
         Nq = self.num_mesh
-        for i in range(Nq):
-            for j in range(Nq):
+        fac = 1
+        if self.coupled_channel:
+            fac = 2
+        for i in range(fac * Nq):
+            for j in range(fac * Nq):
                 fij = self.H0[i, j]
                 self.walkers[(i, j)] = fij
         self.normalize_walker_number()
@@ -180,6 +238,9 @@ class sSRG:
     # using importance sampling to initialize walkers, need debug
     def initialize_random_walkers(self):
         Nq = self.num_mesh
+        fac = 1
+        if self.coupled_channel:
+            fac = 2
         self.walkers.clear()
         prob_weights = np.abs(self.H0).flatten()
         total_abs_weight = np.sum(prob_weights)
@@ -188,8 +249,8 @@ class sSRG:
             return
         prob_distribution = prob_weights / total_abs_weight
         num_walkers_to_sample = int(self.target_walker_number)
-        chosen_flat_indices = np.random.choice(np.arange(Nq * Nq), size=num_walkers_to_sample, p=prob_distribution, replace=True)
-        walkers_i, walkers_j = np.unravel_index(chosen_flat_indices, (Nq, Nq))
+        chosen_flat_indices = np.random.choice(np.arange(fac * fac * Nq * Nq), size=num_walkers_to_sample, p=prob_distribution, replace=True)
+        walkers_i, walkers_j = np.unravel_index(chosen_flat_indices, (fac * Nq, fac * Nq))
         for i, j in zip(walkers_i, walkers_j):
             sign = math.copysign(1.0, self.H0[i, j])
             self.walkers[(i, j)] = self.walkers.get((i, j), 0.0) + sign
@@ -213,6 +274,12 @@ class sSRG:
         print("total walkers:", len(self.walkers))
         print("total walker number:", self.get_number())
 
+    def get_stat_mtx(self) -> np.ndarray:
+        stacked_mtx = np.array(self.mtx_trace)
+        mean_mtx = np.mean(stacked_mtx, axis=0)
+        std_mtx = np.std(stacked_mtx, axis=0, ddof=1)
+        return mean_mtx, std_mtx
+
     def step(self):
         self.seed += 1
         random.seed(self.seed)
@@ -228,14 +295,22 @@ class sSRG:
             for _ in range(abs(Nij)):
                 k, l = 0, 0
                 while True:
-                    k = random.randint(0, self.num_mesh - 1)
-                    l = random.randint(0, self.num_mesh - 1)
+                    if not self.coupled_channel:
+                        k = random.randint(0, self.num_mesh - 1)
+                        l = random.randint(0, self.num_mesh - 1)
+                    else:
+                        k = random.randint(0, 2 * self.num_mesh - 1)
+                        l = random.randint(0, 2 * self.num_mesh - 1)
                     if (k, l) != (i, j):
                         break
                 eta_ki = self.eta[k, i]
                 eta_jl = self.eta[j, l]
-                invp_ik = self.num_mesh - 1
-                invp_jl = self.num_mesh - 1
+                if not self.coupled_channel:
+                    invp_ik = self.num_mesh - 1
+                    invp_jl = self.num_mesh - 1
+                else:
+                    invp_ik = 2 * self.num_mesh - 1
+                    invp_jl = 2 * self.num_mesh - 1
                 p_spawn_ik = self.d_tau * np.abs(eta_ki) * invp_ik
                 p_spawn_jl = self.d_tau * np.abs(eta_jl) * invp_jl
                 spawn_num_ik = basic_math.sign(Nij) * basic_math.sign(eta_ki) * p_spawn_ik
@@ -269,7 +344,8 @@ class sSRG:
         self.new_walkers.clear()
 
     def start(self, tau_target: float):
-        steps = int(tau_target / self.d_tau)
+        # steps = int(tau_target / self.d_tau)
+        steps = 200
         print(f"total steps per loop = {steps}")
         self.d_tau = tau_target / float(steps)
         if steps < 1:
@@ -302,4 +378,5 @@ class sSRG:
             self.tau_loops_trace.append(tau_trace_this_loop)
             self.number_loops_trace.append(number_trace_this_loop)
             self.shift_loops_trace.append(shift_trace_this_loop)
+            self.mtx_trace.append(self.get_V())
             print("! evolution ends")
