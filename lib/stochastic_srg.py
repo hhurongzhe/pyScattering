@@ -25,7 +25,7 @@ class sSRG:
         self.num_mesh: int
         self.mesh_q: np.ndarray
         self.weight_q: np.ndarray
-        self.setup_mesh(params["q_min"], params["q_max"], params["q_number"])
+        self.setup_mesh(params["q_min"], params["q_max"], params["q_number"], params["mesh_type"])
         self.Tkin: np.ndarray
         self.setup_kinetic()
         self.V0: np.ndarray
@@ -53,6 +53,7 @@ class sSRG:
         self.new_walkers: List[Tuple[int, int, bool, float]] = []
         self.tau_loops_trace: List[List[float]] = []
         self.number_loops_trace: List[List[float]] = []
+        self.energy_loops_trace: List[List[float]] = []
         self.shift_loops_trace: List[List[float]] = []
         self.mtx_trace: List[np.ndarray] = []
 
@@ -66,11 +67,41 @@ class sSRG:
     def make_symmetric(A):
         return (A + A.T) / 2
 
+    @staticmethod
+    def linear_mesh(a: float, b: float, N: int):
+        t = np.linspace(a, b, N)
+        u = np.full(N, (b - a) / N)
+        return t, u
+
+    @staticmethod
+    def gauss_legendre_line_mesh(a, b, N):
+        x, w = np.polynomial.legendre.leggauss(N)
+        # Translate x values from the interval [-1, 1] to [a, b]
+        t = 0.5 * (x + 1) * (b - a) + a
+        u = w * 0.5 * (b - a)
+        return t, u
+
+    @staticmethod
+    def gauss_legendre_inf_mesh(N):
+        scale = 100.0
+        x, w = np.polynomial.legendre.leggauss(N)
+        # Translate x values from the interval [-1, 1] to [0, inf)
+        pi_over_4 = np.pi / 4.0
+        t = scale * np.tan(pi_over_4 * (x + 1.0))
+        u = scale * pi_over_4 / np.cos(pi_over_4 * (x + 1.0)) ** 2 * w
+        return t, u
+
     # q_min, q_max in fm^(-1)
-    def setup_mesh(self, q_min: float, q_max: float, q_number: int):
-        self.mesh_q = const.hbarc * np.linspace(q_min, q_max, q_number)
-        self.weight_q = const.hbarc * np.full(q_number, (q_max - q_min) / q_number)
+    def setup_mesh(self, q_min: float, q_max: float, q_number: int, mesh_type: str):
         self.num_mesh = q_number
+        if mesh_type == "gauleg_finite":
+            self.mesh_q, self.weight_q = self.gauss_legendre_line_mesh(const.hbarc * q_min, const.hbarc * q_max, q_number)
+        elif mesh_type == "gauleg_infinite":
+            self.mesh_q, self.weight_q = self.gauss_legendre_inf_mesh(q_number)
+        elif mesh_type == "linear":
+            self.mesh_q, self.weight_q = self.linear_mesh(const.hbarc * q_min, const.hbarc * q_max, q_number)
+        else:
+            raise ValueError(f"Invalid mesh type, only support 'gauleg_finite', 'gauleg_infinite', and 'linear'.")
 
     def setup_kinetic(self):
         Nq = self.num_mesh
@@ -274,6 +305,12 @@ class sSRG:
         print("total walkers:", len(self.walkers))
         print("total walker number:", self.get_number())
 
+    def get_stat_array(self, arr) -> np.ndarray:
+        stacked_arr = np.array(arr)
+        mean_arr = np.mean(stacked_arr, axis=0)
+        std_arr = np.std(stacked_arr, axis=0, ddof=1)
+        return mean_arr, std_arr
+
     def get_stat_mtx(self) -> np.ndarray:
         stacked_mtx = np.array(self.mtx_trace)
         mean_mtx = np.mean(stacked_mtx, axis=0)
@@ -360,6 +397,7 @@ class sSRG:
             tau_trace_this_loop = []
             number_trace_this_loop = []
             shift_trace_this_loop = []
+            energy_trace_this_loop = []
             for i in range(1, steps + 1):
                 tau_now = self.d_tau * i
                 self.step()
@@ -375,8 +413,10 @@ class sSRG:
                     tau_trace_this_loop.append(tau_now)
                     number_trace_this_loop.append(new_num)
                     shift_trace_this_loop.append(self.S)
+                    energy_trace_this_loop.append(energy_now)
             self.tau_loops_trace.append(tau_trace_this_loop)
             self.number_loops_trace.append(number_trace_this_loop)
+            self.energy_loops_trace.append(energy_trace_this_loop)
             self.shift_loops_trace.append(shift_trace_this_loop)
             self.mtx_trace.append(self.get_V())
             print("! evolution ends")

@@ -19,6 +19,7 @@ params["quantum_numbers"] = [1, 1, 0, 1, 0]  # ll, l, j, s, tz
 params["q_min"] = 1e-8
 params["q_max"] = 5.0
 params["q_number"] = 100
+params["mesh_type"] = "linear"
 params["target_walker_number"] = 10000
 params["random_sampling"] = False
 params["loops"] = 10
@@ -37,7 +38,7 @@ utility.header_message()
 
 utility.section_message("Initialization")
 
-Lambda = 1.2
+Lambda = 2.0
 s_target = np.power(Lambda, -4)
 print("Lambda = ", Lambda, "fm^(-1)")
 print("s_target = ", s_target, "fm^(4)")

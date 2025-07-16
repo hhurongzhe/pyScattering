@@ -13,12 +13,13 @@ from matplotlib.colors import TwoSlopeNorm
 
 params = {}
 params["potential_type"] = "n3loemn500"
-params["flag"] = "3df2"
+params["flag"] = "3sd1"
 params["coupled_channel"] = True
-params["quantum_numbers"] = 2  # J
+params["quantum_numbers"] = 1  # J
 params["q_min"] = 1e-8
 params["q_max"] = 5.0
 params["q_number"] = 100
+params["mesh_type"] = "linear"
 params["target_walker_number"] = 4 * 10000
 params["random_sampling"] = False
 params["loops"] = 10
@@ -37,7 +38,7 @@ utility.header_message()
 
 utility.section_message("Initialization")
 
-Lambda = 1.2
+Lambda = 2.0
 s_target = np.power(Lambda, -4)
 print("Lambda = ", Lambda, "fm^(-1)")
 print("s_target = ", s_target, "fm^(4)")
@@ -46,7 +47,6 @@ s_target *= units_factor
 
 
 sSRG = stochastic_srg.sSRG(params)
-
 
 sSRG.initialize_walkers()
 sSRG.start(s_target)
