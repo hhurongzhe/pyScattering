@@ -1,7 +1,7 @@
 import subprocess
 
 # * This script is used to commit changes to a git repository.
-message = "update fortran compilation script"
+message = "use steps to control d_tau"
 
 
 command1 = "git add ."

@@ -40,6 +40,7 @@ class sSRG:
         self.target_walker_number: float = params["target_walker_number"]
         self.random_sampling: bool = params["random_sampling"]
         self.loops: int = params["loops"]
+        self.steps: int = params["steps"]
         self.d_tau: float = params["d_tau"]
         self.A: int = params["A"]
         self.xi: float = params["xi"]
@@ -381,12 +382,8 @@ class sSRG:
         self.new_walkers.clear()
 
     def start(self, tau_target: float):
-        # steps = int(tau_target / self.d_tau)
-        steps = 200
-        print(f"total steps per loop = {steps}")
+        steps = self.steps
         self.d_tau = tau_target / float(steps)
-        if steps < 1:
-            raise ValueError("error: steps < 1 in sSRG!")
         print("! evolution begins")
         print(f"!{'loop':>5}{'step':>12}{'S':>16}{'E':>16}{'Nw':>16}")
         for l in range(self.loops):
