@@ -40,8 +40,9 @@ class sSRG:
         self.target_walker_number: float = params["target_walker_number"]
         self.random_sampling: bool = params["random_sampling"]
         self.loops: int = params["loops"]
+        self.s_target: float = const.MN**2 / const.hbarc**4 * np.power(params["Lambda"], -4)
         self.steps: int = params["steps"]
-        self.d_tau: float = params["d_tau"]
+        self.d_tau: float = self.s_target / float(self.steps)
         self.A: int = params["A"]
         self.xi: float = params["xi"]
         self.zeta: float = params["zeta"]
@@ -381,9 +382,8 @@ class sSRG:
                     self.walkers[(i, j)] = new_num
         self.new_walkers.clear()
 
-    def start(self, tau_target: float):
+    def start(self):
         steps = self.steps
-        self.d_tau = tau_target / float(steps)
         print("! evolution begins")
         print(f"!{'loop':>5}{'step':>12}{'S':>16}{'E':>16}{'Nw':>16}")
         for l in range(self.loops):

@@ -24,7 +24,7 @@ mp = 938.2720
 mn = 939.5654
 mN = 2 * (mp * mn) / (mp + mn)
 
-potential_type = "n3loem"
+potential_type = "n3loemn500"
 potential = chiral_potential.two_nucleon_potential(potential_type)
 print(f"potential type : {potential_type}\n")
 
@@ -41,7 +41,7 @@ S_eval_points = units_factor * S_eval_points
 # For Chiral EFT interactions, use q_max 6-8 fm^(-1).
 # For standard OBE interactions such as AV18, use q_max 20-30 fm^(-1).
 Nq = 100
-q_max = 8.0
+q_max = 5.0
 
 
 # we use linear mesh points.

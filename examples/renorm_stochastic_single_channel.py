@@ -13,14 +13,15 @@ from matplotlib.colors import TwoSlopeNorm
 
 params = {}
 params["potential_type"] = "n3loemn500"
-params["flag"] = "3p0"
+params["Lambda"] = 2.0
+params["flag"] = "1s0"
 params["coupled_channel"] = False
-params["quantum_numbers"] = [1, 1, 0, 1, 0]  # ll, l, j, s, tz
+params["quantum_numbers"] = [0, 0, 0, 0, 0]  # ll, l, j, s, tz
 params["q_min"] = 1e-8
 params["q_max"] = 5.0
 params["q_number"] = 100
 params["mesh_type"] = "linear"
-params["target_walker_number"] = 10000
+params["target_walker_number"] = 1000
 params["random_sampling"] = False
 params["loops"] = 10
 params["steps"] = 1000
@@ -38,23 +39,17 @@ utility.header_message()
 
 utility.section_message("Initialization")
 
-Lambda = 2.0
-s_target = np.power(Lambda, -4)
-print("Lambda = ", Lambda, "fm^(-1)")
-print("s_target = ", s_target, "fm^(4)")
-units_factor = const.MN**2 / const.hbarc**4
-s_target *= units_factor
-
 
 sSRG = stochastic_srg.sSRG(params)
-
-
 sSRG.initialize_walkers()
-sSRG.start(s_target)
+sSRG.start()
+mean_tau, std_tau = sSRG.get_stat_array(sSRG.tau_loops_trace)
 mean_mtx, std_mtx = sSRG.get_stat_mtx()
 
-file_mean_name = f"result/srg-stoch-mean-{params['flag']}-{params['potential_type']}-Lambda{Lambda}-loop{params['loops']}-Nw{params['target_walker_number']}.npy"
-file_std_name = f"result/srg-stoch-std-{params['flag']}-{params['potential_type']}-Lambda{Lambda}-loop{params['loops']}-Nw{params['target_walker_number']}.npy"
+file_tau_name = f"result/srg-stoch-tau-step{params['steps']}-Lambda{params['Lambda']}.npy"
+file_mean_name = f"result/srg-stoch-mean-{params['flag']}-{params['potential_type']}-Lambda{params['Lambda']}-loop{params['loops']}-step{params['steps']}-Nw{params['target_walker_number']}.npy"
+file_std_name = f"result/srg-stoch-std-{params['flag']}-{params['potential_type']}-Lambda{params['Lambda']}-loop{params['loops']}-step{params['steps']}-Nw{params['target_walker_number']}.npy"
+np.save(file_tau_name, mean_tau)
 np.save(file_mean_name, mean_mtx)
 np.save(file_std_name, std_mtx)
 
@@ -70,7 +65,7 @@ else:
 c = plt.imshow(mean_mtx, cmap="RdBu_r", interpolation="none", extent=(p.min(), p.max(), pp.min(), pp.max()), origin="lower", norm=norm)
 plt.xlabel(r"$p$ (MeV)", fontsize=16)
 plt.ylabel(r"$p'$ (MeV)", fontsize=16)
-plt.title(r"$\lambda=$" + str(round(Lambda, 2)) + r"$\;\mathrm{fm}^{-1}$", fontsize=16)
+plt.title(r"$\lambda=$" + str(round(params["Lambda"], 2)) + r"$\;\mathrm{fm}^{-1}$", fontsize=16)
 plt.xticks([200, 400, 600, 800])
 plt.yticks([200, 400, 600, 800])
 plt.tick_params(labelsize=14)
