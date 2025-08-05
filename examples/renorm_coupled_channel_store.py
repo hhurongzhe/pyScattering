@@ -206,7 +206,7 @@ plt.subplots_adjust(wspace=0, right=1)
 cbar = fig.colorbar(c, ax=axes, orientation="vertical", pad=0.05, shrink=0.9)
 cbar.set_label("$V(p',p)\,\mathrm{(MeV^{-2})}$")
 
-plt.savefig(f"srg-coupled-channel-{flag}-{potential_type}.png", dpi=400)
+# plt.savefig(f"srg-coupled-channel-{flag}-{potential_type}.png", dpi=400)
 plt.show()
 ################################################################################################################
 

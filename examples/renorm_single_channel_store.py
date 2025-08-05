@@ -61,8 +61,8 @@ np.save(file_mesh_q, mesh_q)
 np.save(file_weight_q, weight_q)
 
 
-flag = "3p0"
-ll, l, j, s, tz = 1, 1, 0, 1, 0
+flag = "1s0"
+ll, l, j, s, tz = 0, 0, 0, 0, 0
 
 
 def potential_initial(pp: float, p: float):
@@ -171,7 +171,7 @@ plt.subplots_adjust(wspace=0, right=1)
 cbar = fig.colorbar(c, ax=axes, orientation="vertical", pad=0.05, shrink=0.9)
 cbar.set_label("$V(p',p)\,\mathrm{(MeV^{-2})}$")
 
-plt.savefig(f"srg-single-channel-{flag}-{potential_type}.png", dpi=400)
+# plt.savefig(f"srg-single-channel-{flag}-{potential_type}.png", dpi=400)
 plt.show()
 ################################################################################################################
 

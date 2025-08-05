@@ -27,7 +27,7 @@ utility.section_message("Initialization")
 # initialize an object for computing T-matrices, phase shifts,
 nn = nn_studio.nn_studio(jmin=0, jmax=1, tzmin=0, tzmax=0, Np=130, mesh_type="gauleg_finite")
 
-potential_type = "n3loem"
+potential_type = "n3loemn500"
 
 print(f"potential type : {potential_type}\n")
 # initialize an object for the chiral interaction
@@ -89,8 +89,7 @@ for i, p_bra in enumerate(pp):
             T[i][j] = Tij
 
         V[i][j] = V[i][j] * p_bra * p_ket * np.sqrt(ww[i] * ww[j])
-
-        H = T + V
+H = T + V
 t3 = time.time()
 profiler.add_timing("Set up H", t3 - t2)
 ################################################################################################################
