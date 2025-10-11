@@ -21,7 +21,9 @@ from functools import lru_cache
 # n4loemn450, n4loemn500, n4loemn550,
 # n3loem,
 # idaholocal1, idaholocal2, idaholocal3, ..., idaholocal12,
-# n2loopt, n2losat, cdbonn, av18.
+# n2loopt, n2losat, cdbonn, av18,
+# scslo1fm, scslo1p1fm, scslo1p2fm, ..., scsn4lo1fm, scsn4lo1p1fm, scsn4lo1p2fm,
+# losms400, losms450, losms500, losms550, ..., n4lo+sms400, n4lo+sms450, n4lo+sms500, n4lo+sms550.
 
 
 # Chiral two-nucleon potential.
@@ -49,22 +51,7 @@ class two_nucleon_potential:
     @lru_cache(maxsize=None)
     def potential(self, ll, l, pp, p, j, s, tz):
         V = 0
-        local_type = [
-            "av18",
-            "v8'",
-            "idaholocal1",
-            "idaholocal2",
-            "idaholocal3",
-            "idaholocal4",
-            "idaholocal5",
-            "idaholocal6",
-            "idaholocal7",
-            "idaholocal8",
-            "idaholocal9",
-            "idaholocal10",
-            "idaholocal11",
-            "idaholocal12",
-        ]
+        local_type = ["av18", "v8'", "idaholocal1", "idaholocal2", "idaholocal3", "idaholocal4", "idaholocal5", "idaholocal6", "idaholocal7", "idaholocal8", "idaholocal9", "idaholocal10", "idaholocal11", "idaholocal12"]
         if self.chiral_type in local_type:
             V = self.nonlocal_projection(ll, l, pp, p, j, s, tz)
         elif self.chiral_type == "loemn450":
@@ -105,10 +92,106 @@ class two_nucleon_potential:
             V = pot.cdbonnpot(ll, l, pp, p, j, s, tz)
         elif self.chiral_type == "n3loem":
             V = pot.n3loem(ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scslo0p8fm":
+            V = pot.scs(1, 0, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scslo0p9fm":
+            V = pot.scs(2, 0, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scslo1fm":
+            V = pot.scs(3, 0, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scslo1p1fm":
+            V = pot.scs(4, 0, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scslo1p2fm":
+            V = pot.scs(5, 0, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scsnlo0p8fm":
+            V = pot.scs(1, 1, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scsnlo0p9fm":
+            V = pot.scs(2, 1, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scsnlo1fm":
+            V = pot.scs(3, 1, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scsnlo1p1fm":
+            V = pot.scs(4, 1, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scsnlo1p2fm":
+            V = pot.scs(5, 1, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scsn2lo0p8fm":
+            V = pot.scs(1, 2, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scsn2lo0p9fm":
+            V = pot.scs(2, 2, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scsn2lo1fm":
+            V = pot.scs(3, 2, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scsn2lo1p1fm":
+            V = pot.scs(4, 2, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scsn2lo1p2fm":
+            V = pot.scs(5, 2, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scsn3lo0p8fm":
+            V = pot.scs(1, 3, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scsn3lo0p9fm":
+            V = pot.scs(2, 3, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scsn3lo1fm":
+            V = pot.scs(3, 3, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scsn3lo1p1fm":
+            V = pot.scs(4, 3, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scsn3lo1p2fm":
+            V = pot.scs(5, 3, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scsn4lo0p8fm":
+            V = pot.scs(1, 4, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scsn4lo0p9fm":
+            V = pot.scs(2, 4, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scsn4lo1fm":
+            V = pot.scs(3, 4, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scsn4lo1p1fm":
+            V = pot.scs(4, 4, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "scsn4lo1p2fm":
+            V = pot.scs(5, 4, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "losms400":
+            V = pot.sms(1, 0, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "losms450":
+            V = pot.sms(2, 0, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "losms500":
+            V = pot.sms(3, 0, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "losms550":
+            V = pot.sms(4, 0, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "nlosms400":
+            V = pot.sms(1, 1, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "nlosms450":
+            V = pot.sms(2, 1, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "nlosms500":
+            V = pot.sms(3, 1, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "nlosms550":
+            V = pot.sms(4, 1, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "n2losms400":
+            V = pot.sms(1, 2, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "n2losms450":
+            V = pot.sms(2, 2, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "n2losms500":
+            V = pot.sms(3, 2, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "n2losms550":
+            V = pot.sms(4, 2, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "n3losms400":
+            V = pot.sms(1, 3, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "n3losms450":
+            V = pot.sms(2, 3, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "n3losms500":
+            V = pot.sms(3, 3, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "n3losms550":
+            V = pot.sms(4, 3, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "n4losms400":
+            V = pot.sms(1, 4, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "n4losms450":
+            V = pot.sms(2, 4, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "n4losms500":
+            V = pot.sms(3, 4, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "n4losms550":
+            V = pot.sms(4, 4, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "n4lo+sms400":
+            V = pot.sms(1, 5, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "n4lo+sms450":
+            V = pot.sms(2, 5, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "n4lo+sms500":
+            V = pot.sms(3, 5, ll, l, pp, p, j, s, tz)
+        elif self.chiral_type == "n4lo+sms550":
+            V = pot.sms(4, 5, ll, l, pp, p, j, s, tz)
         else:
-            sys.exit(
-                f"momentum space potential type {self.chiral_type} not implemented yet."
-            )
+            sys.exit(f"momentum space potential type {self.chiral_type} not implemented yet.")
         if self.add_cutoff_coulomb:
             V = V + self.potential_cutoff_coulomb(ll, l, pp, p, j, s, tz)
         return V
@@ -137,6 +220,55 @@ class two_nucleon_potential:
             "n2losat",
             "cdbonn",
             "n3loem",
+            "scslo0p8fm",
+            "scslo0p9fm",
+            "scslo1fm",
+            "scslo1p1fm",
+            "scslo1p2fm",
+            "scsnlo0p8fm",
+            "scsnlo0p9fm",
+            "scsnlo1fm",
+            "scsnlo1p1fm",
+            "scsnlo1p2fm",
+            "scsn2lo0p8fm",
+            "scsn2lo0p9fm",
+            "scsn2lo1fm",
+            "scsn2lo1p1fm",
+            "scsn2lo1p2fm",
+            "scsn3lo0p8fm",
+            "scsn3lo0p9fm",
+            "scsn3lo1fm",
+            "scsn3lo1p1fm",
+            "scsn3lo1p2fm",
+            "scsn4lo0p8fm",
+            "scsn4lo0p9fm",
+            "scsn4lo1fm",
+            "scsn4lo1p1fm",
+            "scsn4lo1p2fm",
+            "losms400",
+            "losms450",
+            "losms500",
+            "losms550",
+            "nlosms400",
+            "nlosms450",
+            "nlosms500",
+            "nlosms550",
+            "n2losms400",
+            "n2losms450",
+            "n2losms500",
+            "n2losms550",
+            "n3losms400",
+            "n3losms450",
+            "n3losms500",
+            "n3losms550",
+            "n4losms400",
+            "n4losms450",
+            "n4losms500",
+            "n4losms550",
+            "n4lo+sms400",
+            "n4lo+sms450",
+            "n4lo+sms500",
+            "n4lo+sms550",
         ]
         if self.chiral_type in nonlocal_type:
             V = self.local_projection(ll, l, s, j, tz, r)
@@ -183,9 +315,7 @@ class two_nucleon_potential:
             type = 2
             V = pot.av18pot(type, ll, l, s, j, tz, r)
         else:
-            sys.exit(
-                f"position space potential type {self.chiral_type} not implemented yet."
-            )
+            sys.exit(f"position space potential type {self.chiral_type} not implemented yet.")
         return V
 
     # Local projection based on Eq. (9) and (10) in K. A. Wendt, R. J. Furnstahl, and S. Ramanan, Phys. Rev. C 86, 014003 (2012).
@@ -196,9 +326,7 @@ class two_nucleon_potential:
             lll = np.max([l, ll])
             for idx, k in enumerate(self.pmesh_points):
                 w = self.pmesh_weights[idx]
-                temp = temp + (k**2) * w * spherical_jn(
-                    lll, k * r / const.hbarc
-                ) * self.potential(lll, 0, k, 0, j, s, tz)
+                temp = temp + (k**2) * w * spherical_jn(lll, k * r / const.hbarc) * self.potential(lll, 0, k, 0, j, s, tz)
             return temp
         else:
             norm = 4 / np.sqrt(np.pi) * gamma((l + 3) / 2) / gamma(l / 2)
@@ -208,9 +336,7 @@ class two_nucleon_potential:
                 wkk = self.pmesh_weights[idxkk]
                 for idxk, k in enumerate(self.pmesh_points):
                     wk = self.pmesh_weights[idxk]
-                    temp = temp + wkk * wk * (kk**2 / k) * spherical_jn(
-                        ll, kk * r / const.hbarc
-                    ) * self.potential(ll, l, kk, k, j, s, tz)
+                    temp = temp + wkk * wk * (kk**2 / k) * spherical_jn(ll, kk * r / const.hbarc) * self.potential(ll, l, kk, k, j, s, tz)
             return temp * norm
 
     # Nonlocal projection based on Eq. (12) in K. A. Wendt, R. J. Furnstahl, and S. Ramanan, Phys. Rev. C 86, 014003 (2012).
@@ -220,11 +346,7 @@ class two_nucleon_potential:
         norm = 2 / np.pi
         for idx, r in enumerate(self.rmesh_points):
             w = self.rmesh_weights[idx]
-            temp = temp + (r**2) * w * spherical_jn(
-                l, p * r / const.hbarc
-            ) * spherical_jn(ll, pp * r / const.hbarc) * self.potential_local(
-                ll, l, s, j, tz, r
-            )
+            temp = temp + (r**2) * w * spherical_jn(l, p * r / const.hbarc) * spherical_jn(ll, pp * r / const.hbarc) * self.potential_local(ll, l, s, j, tz, r)
         return temp * norm / const.hbarc**3
 
     @staticmethod
@@ -275,9 +397,7 @@ class two_nucleon_potential:
         epsilon = 1
         alpha = 1.0 / 137.035989
         factor = (1 + 2 * ko * ko / const.Mp**2) / np.sqrt(1 + ko * ko / const.Mp**2)
-        factor_rela = np.sqrt(const.Mp / np.sqrt(const.Mp**2 + pp**2)) * np.sqrt(
-            const.Mp / np.sqrt(const.Mp**2 + p**2)
-        )
+        factor_rela = np.sqrt(const.Mp / np.sqrt(const.Mp**2 + pp**2)) * np.sqrt(const.Mp / np.sqrt(const.Mp**2 + p**2))
         Cc = 4 * np.pi * epsilon * alpha * factor * factor_rela
         R = 10.0 / const.hbarc  # R = 10 fm
         Vc = Cc * (1 - np.cos(np.sqrt(q2) * R)) / q2
@@ -300,9 +420,7 @@ class two_nucleon_potential:
         mesh4p, mesh4pw = self.gauss_legendre_line_mesh(800.0, 1600.0, 2 * n0)
         mesh5p, mesh5pw = self.gauss_legendre_line_mesh(1600.0, 3200.0, n0)
         pmesh_points = np.concatenate((mesh1p, mesh2p, mesh3p, mesh4p, mesh5p), axis=0)
-        pmesh_weights = np.concatenate(
-            (mesh1pw, mesh2pw, mesh3pw, mesh4pw, mesh5pw), axis=0
-        )
+        pmesh_weights = np.concatenate((mesh1pw, mesh2pw, mesh3pw, mesh4pw, mesh5pw), axis=0)
         return pmesh_points, pmesh_weights
 
     def set_up_rmesh(self):
@@ -314,12 +432,8 @@ class two_nucleon_potential:
         mesh5r, mesh5rw = self.gauss_legendre_line_mesh(8.0, 16.0, 4 * n0)
         mesh6r, mesh6rw = self.gauss_legendre_line_mesh(16.0, 32.0, 2 * n0)
         mesh7r, mesh7rw = self.gauss_legendre_line_mesh(32.0, 40.0, n0)
-        rmesh_points = np.concatenate(
-            (mesh1r, mesh2r, mesh3r, mesh4r, mesh5r, mesh6r, mesh7r), axis=0
-        )
-        rmesh_weights = np.concatenate(
-            (mesh1rw, mesh2rw, mesh3rw, mesh4rw, mesh5rw, mesh6rw, mesh7rw), axis=0
-        )
+        rmesh_points = np.concatenate((mesh1r, mesh2r, mesh3r, mesh4r, mesh5r, mesh6r, mesh7r), axis=0)
+        rmesh_weights = np.concatenate((mesh1rw, mesh2rw, mesh3rw, mesh4rw, mesh5rw, mesh6rw, mesh7rw), axis=0)
         # rmesh_points, rmesh_weights = self.gauss_legendre_line_mesh(0, 60, 600)
         return rmesh_points, rmesh_weights
 
@@ -381,9 +495,7 @@ class two_nucleon_potential:
         dir = "input_nn_files"  # files are generated in this dir.
         if not os.path.exists(dir):
             os.makedirs(dir)
-        file_name = (
-            "./" + dir + "/" + f"{self.chiral_type}_kmax{kmax}_N{N}_Jmax{Jmax}.dat"
-        )
+        file_name = "./" + dir + "/" + f"{self.chiral_type}_kmax{kmax}_N{N}_Jmax{Jmax}.dat"
         channels = self.gen_mtx_channels(N, Jmax)
         MeshPoints, MeshWeights = self.gauss_legendre_line_mesh(0, kmax, N)
         with open(file_name, "w") as fp:
@@ -412,76 +524,20 @@ class two_nucleon_potential:
                 fp.write(f"Ndim:\n{Ndim}\n")
                 fp.write("V:\n")
                 if J == 0:
-                    V = (
-                        np.array(
-                            [
-                                [
-                                    self.potential(S, S, pi, pj, J, S, Tz)
-                                    for pj in MeshPoints
-                                ]
-                                for pi in MeshPoints
-                            ]
-                        )
-                        * hccubic
-                    )
+                    V = np.array([[self.potential(S, S, pi, pj, J, S, Tz) for pj in MeshPoints] for pi in MeshPoints]) * hccubic
                     np.savetxt(fp, V, fmt="%.17f")
                 else:
                     if not coup:
-                        V = (
-                            np.array(
-                                [
-                                    [
-                                        self.potential(J, J, pi, pj, J, S, Tz)
-                                        for pj in MeshPoints
-                                    ]
-                                    for pi in MeshPoints
-                                ]
-                            )
-                            * hccubic
-                        )
+                        V = np.array([[self.potential(J, J, pi, pj, J, S, Tz) for pj in MeshPoints] for pi in MeshPoints]) * hccubic
                         np.savetxt(fp, V, fmt="%.17f")
                     else:
-                        Vpp = np.array(
-                            [
-                                [
-                                    self.potential(J + 1, J + 1, pi, pj, J, S, Tz)
-                                    for pj in MeshPoints
-                                ]
-                                for pi in MeshPoints
-                            ]
-                        )
-                        Vpm = np.array(
-                            [
-                                [
-                                    self.potential(J + 1, J - 1, pi, pj, J, S, Tz)
-                                    for pj in MeshPoints
-                                ]
-                                for pi in MeshPoints
-                            ]
-                        )
-                        Vmp = np.array(
-                            [
-                                [
-                                    self.potential(J - 1, J + 1, pi, pj, J, S, Tz)
-                                    for pj in MeshPoints
-                                ]
-                                for pi in MeshPoints
-                            ]
-                        )
-                        Vmm = np.array(
-                            [
-                                [
-                                    self.potential(J - 1, J - 1, pi, pj, J, S, Tz)
-                                    for pj in MeshPoints
-                                ]
-                                for pi in MeshPoints
-                            ]
-                        )
+                        Vpp = np.array([[self.potential(J + 1, J + 1, pi, pj, J, S, Tz) for pj in MeshPoints] for pi in MeshPoints])
+                        Vpm = np.array([[self.potential(J + 1, J - 1, pi, pj, J, S, Tz) for pj in MeshPoints] for pi in MeshPoints])
+                        Vmp = np.array([[self.potential(J - 1, J + 1, pi, pj, J, S, Tz) for pj in MeshPoints] for pi in MeshPoints])
+                        Vmm = np.array([[self.potential(J - 1, J - 1, pi, pj, J, S, Tz) for pj in MeshPoints] for pi in MeshPoints])
                         V = np.block([[Vmm, Vmp], [Vpm, Vpp]]) * hccubic
                         np.savetxt(fp, V, fmt="%.17f")
-        binary_file = (
-            "./" + dir + "/" + f"{self.chiral_type}_kmax{kmax}_N{N}_Jmax{Jmax}.bin"
-        )
+        binary_file = "./" + dir + "/" + f"{self.chiral_type}_kmax{kmax}_N{N}_Jmax{Jmax}.bin"
         t2 = time.time()
         profiler.add_timing("Writing .dat", t2 - t1)
         self.convert_dat_to_binary(file_name, binary_file)
@@ -499,9 +555,7 @@ class two_nucleon_potential:
         dir = "input_nn_files"  # files are generated in this dir.
         if not os.path.exists(dir):
             os.makedirs(dir)
-        file_name = (
-            "./" + dir + "/" + f"{self.chiral_type}_rmax{rmax}_N{N}_Jmax{Jmax}.dat"
-        )
+        file_name = "./" + dir + "/" + f"{self.chiral_type}_rmax{rmax}_N{N}_Jmax{Jmax}.dat"
         channels = self.gen_mtx_channels(N, Jmax)
         MeshPoints, MeshWeights = self.gauss_legendre_line_mesh(0, rmax, N)
         with open(file_name, "w") as fp:
@@ -528,49 +582,20 @@ class two_nucleon_potential:
                 fp.write(f"Ndim:\n{Ndim}\n")
                 fp.write("V:\n")
                 if J == 0:
-                    V = np.array(
-                        [self.potential_local(S, S, S, J, Tz, ri) for ri in MeshPoints]
-                    )
+                    V = np.array([self.potential_local(S, S, S, J, Tz, ri) for ri in MeshPoints])
                     np.savetxt(fp, V, fmt="%.17f")
                 else:
                     if not coup:
-                        V = np.array(
-                            [
-                                self.potential_local(J, J, S, J, Tz, ri)
-                                for ri in MeshPoints
-                            ]
-                        )
+                        V = np.array([self.potential_local(J, J, S, J, Tz, ri) for ri in MeshPoints])
                         np.savetxt(fp, V, fmt="%.17f")
                     else:
-                        Vpp = np.array(
-                            [
-                                self.potential_local(J + 1, J + 1, S, J, Tz, ri)
-                                for ri in MeshPoints
-                            ]
-                        )
-                        Vpm = np.array(
-                            [
-                                self.potential_local(J + 1, J - 1, S, J, Tz, ri)
-                                for ri in MeshPoints
-                            ]
-                        )
-                        Vmp = np.array(
-                            [
-                                self.potential_local(J - 1, J + 1, S, J, Tz, ri)
-                                for ri in MeshPoints
-                            ]
-                        )
-                        Vmm = np.array(
-                            [
-                                self.potential_local(J - 1, J - 1, S, J, Tz, ri)
-                                for ri in MeshPoints
-                            ]
-                        )
+                        Vpp = np.array([self.potential_local(J + 1, J + 1, S, J, Tz, ri) for ri in MeshPoints])
+                        Vpm = np.array([self.potential_local(J + 1, J - 1, S, J, Tz, ri) for ri in MeshPoints])
+                        Vmp = np.array([self.potential_local(J - 1, J + 1, S, J, Tz, ri) for ri in MeshPoints])
+                        Vmm = np.array([self.potential_local(J - 1, J - 1, S, J, Tz, ri) for ri in MeshPoints])
                         V = np.block([[Vmm, Vmp], [Vpm, Vpp]])
                         np.savetxt(fp, V, fmt="%.17f")
-        binary_file = (
-            "./" + dir + "/" + f"{self.chiral_type}_rmax{rmax}_N{N}_Jmax{Jmax}.bin"
-        )
+        binary_file = "./" + dir + "/" + f"{self.chiral_type}_rmax{rmax}_N{N}_Jmax{Jmax}.bin"
         t2 = time.time()
         profiler.add_timing("Writing .dat", t2 - t1)
         # self.convert_dat_to_binary(file_name, binary_file)

@@ -462,6 +462,32 @@ python module force_module ! in
             real*8 intent(in) :: r
             real*8 :: av18pot
         end function av18pot
+        function scs(cutnum,ostat,lp,l,kp,k,jj,s,tz) ! in :force_module:wrapforce.f90
+            use ichiral, only: chiralmompwd
+            integer intent(in) :: cutnum
+            integer intent(in) :: ostat
+            integer intent(in) :: lp
+            integer intent(in) :: l
+            real*8 intent(in) :: kp
+            real*8 intent(in) :: k
+            integer intent(in) :: jj
+            integer intent(in) :: s
+            integer intent(in) :: tz
+            real*8 :: scs
+        end function scs
+        function sms(cutnum,ostat,lp,l,kp,k,jj,s,tz) ! in :force_module:wrapforce.f90
+            use smschiral, only: chiralmompwd
+            integer intent(in) :: cutnum
+            integer intent(in) :: ostat
+            integer intent(in) :: lp
+            integer intent(in) :: l
+            real*8 intent(in) :: kp
+            real*8 intent(in) :: k
+            integer intent(in) :: jj
+            integer intent(in) :: s
+            integer intent(in) :: tz
+            real*8 :: sms
+        end function sms
     end interface 
 end python module force_module
 

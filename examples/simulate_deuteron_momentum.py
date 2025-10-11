@@ -27,7 +27,7 @@ utility.section_message("Initialization")
 # initialize an object for computing T-matrices, phase shifts,
 nn = nn_studio.nn_studio(jmin=0, jmax=1, tzmin=0, tzmax=0, Np=130, mesh_type="gauleg_finite")
 
-potential_type = "n3loemn500"
+potential_type = "n4lo+sms450"
 
 print(f"potential type : {potential_type}\n")
 # initialize an object for the chiral interaction

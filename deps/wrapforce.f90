@@ -1281,3 +1281,119 @@ function av18pot(lpot,lp,l,s,j,Tz,r)
 
     return
 end function
+
+function scs(cutnum,OSTAT,lp,l,kp,k,jj,S,Tz)
+    use ICHIRAL,only: CHIRALMOMPWD
+    implicit none
+    real*8 :: scs
+    real*8,intent(in) :: kp,k
+    integer,intent(in) :: lp,l,jj,S,Tz,OSTAT,cutnum
+
+
+    real*8 PPUN1,PPUN2,POTEN(6)
+    CHARACTER(len=2) ::FORCE
+    if (Tz .eq. -1)then
+        FORCE='pp'
+    else if (Tz .eq. 0 )then
+        FORCE='np'
+    else if (Tz .eq. 1 )then
+        FORCE='nn'
+    else
+        write(*,*) 'Wrong Tz!'
+    end if
+    PPUN1=kp*0.001d0
+    PPUN2=k*0.001d0
+
+    CALL CHIRALMOMPWD(OSTAT,FORCE,PPUN1,PPUN2,jj,CUTNUM,POTEN)
+
+    if(jj .eq. 0)then
+        if( (S .eq. 0) .and. (lp .eq. 0) .and. (l .eq. 0) ) then
+            scs=POTEN(1)*1.0D-6
+        else if(( (S .eq. 1) .and. (lp .eq. 1) .and. (l .eq. 1) ))then
+            scs=POTEN(6)*1.0D-6
+        else
+            write(*,*) "error1"
+            return
+        end if
+    else if(jj .gt. 0)then
+        if( (S .eq. 0) .and. (lp .eq. jj) .and. (l .eq. jj) ) then
+            scs=POTEN(1)*1.0D-6
+        else if(( (S .eq. 1) .and. (lp .eq. jj) .and. (l .eq. jj) ))then
+            scs=POTEN(2)*1.0D-6
+        else if(( (S .eq. 1) .and. (lp .eq. jj+1) .and. (l .eq. jj+1) ))then
+            scs=POTEN(6)*1.0D-6
+        else if(( (S .eq. 1) .and. (lp .eq. jj-1) .and. (l .eq. jj-1) ))then
+            scs=POTEN(3)*1.0D-6
+        else if(( (S .eq. 1) .and. (lp .eq. jj+1) .and. (l .eq. jj-1) ))then
+            scs=-POTEN(5)*1.0D-6
+        else if(( (S .eq. 1) .and. (lp .eq. jj-1) .and. (l .eq. jj+1) ))then
+            scs=-POTEN(4)*1.0D-6
+        else
+            write(*,*) "error2"
+            return
+        end if
+    else
+        write(*,*) "error3"
+        return
+    end if
+
+    return
+end function
+
+function sms(cutnum,OSTAT,lp,l,kp,k,jj,S,Tz)
+    use SMSCHIRAL,only: CHIRALMOMPWD
+    implicit none
+    real*8 :: sms
+    real*8,intent(in) :: kp,k
+    integer,intent(in) :: lp,l,jj,S,Tz,OSTAT,cutnum
+
+
+    real*8 PPUN1,PPUN2,POTEN(6)
+    CHARACTER(len=2) ::FORCE
+    if (Tz .eq. -1)then
+        FORCE='pp'
+    else if (Tz .eq. 0 )then
+        FORCE='np'
+    else if (Tz .eq. 1 )then
+        FORCE='nn'
+    else
+        write(*,*) 'Wrong Tz!'
+    end if
+    PPUN1=kp*0.001d0
+    PPUN2=k*0.001d0
+    ! CALL CHIRALMOMPWD(OSTAT,FORCE,ka,kb,jch_BHF,CUTNUM,POTENT)
+    CALL CHIRALMOMPWD(OSTAT,FORCE,PPUN1,PPUN2,jj,CUTNUM,POTEN)
+
+    if(jj .eq. 0)then
+        if( (S .eq. 0) .and. (lp .eq. 0) .and. (l .eq. 0) ) then
+            sms=POTEN(1)*1.0D-6
+        else if(( (S .eq. 1) .and. (lp .eq. 1) .and. (l .eq. 1) ))then
+            sms=POTEN(6)*1.0D-6
+        else
+            write(*,*) "wrong channel with j=0"
+            return
+        end if
+    else if(jj .gt. 0)then
+        if( (S .eq. 0) .and. (lp .eq. jj) .and. (l .eq. jj) ) then
+            sms=POTEN(1)*1.0D-6
+        else if(( (S .eq. 1) .and. (lp .eq. jj) .and. (l .eq. jj) ))then
+            sms=POTEN(2)*1.0D-6
+        else if(( (S .eq. 1) .and. (lp .eq. jj+1) .and. (l .eq. jj+1) ))then
+            sms=POTEN(6)*1.0D-6
+        else if(( (S .eq. 1) .and. (lp .eq. jj-1) .and. (l .eq. jj-1) ))then
+            sms=POTEN(3)*1.0D-6
+        else if(( (S .eq. 1) .and. (lp .eq. jj+1) .and. (l .eq. jj-1) ))then
+            sms=-POTEN(5)*1.0D-6
+        else if(( (S .eq. 1) .and. (lp .eq. jj-1) .and. (l .eq. jj+1) ))then
+            sms=-POTEN(4)*1.0D-6
+        else
+            write(*,*) "wrong channel with j>0"
+            return
+        end if
+    else
+        write(*,*) "wrong j"
+        return
+    end if
+
+    return
+end function
