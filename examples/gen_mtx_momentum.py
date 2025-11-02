@@ -15,13 +15,13 @@ utility.header_message()
 utility.section_message("Interaction initialization")
 
 # initialize an object for the chiral interaction
-potential = chiral_potential.two_nucleon_potential("idaholocal1")
+potential = chiral_potential.two_nucleon_potential("n4lo+sms550")
 
 ################################################################################################################
 
 utility.section_message("Writing momentum matrix elements")
 
-potential.write_mtx_momentum(kmax=20, N=200, Jmax=8)
+potential.write_mtx_momentum(kmax=8, N=100, Jmax=8)
 
 ################################################################################################################
 

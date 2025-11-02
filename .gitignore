@@ -1,6 +1,8 @@
-.vscode/
 */__pycache__/
 .DS_Store
+deps/ichiral.f90
+deps/idahopot.f
+deps/smschiral_RS.f90
 *.mod
 *.o
 *.so
