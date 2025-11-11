@@ -545,6 +545,67 @@ class two_nucleon_potential:
         profiler.add_timing("Writing .bin", t3 - t2)
         print("files are generated to :\n", file_name, "\n", binary_file)
 
+    # same as write_mtx_momentum, but no CSB, no CIB
+    def write_mtx_momentum_iso(self, kmax=8.0, N=100, Jmax=8):
+        t1 = time.time()
+        # this value of hw is in line with Miyagi's code,
+        # used for unit transformation.
+        hc = 197.32705
+        hccubic = hc**3
+        dir = "input_nn_files"  # files are generated in this dir.
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+        file_name = "./" + dir + "/" + f"{self.chiral_type}_iso_kmax{kmax}_N{N}_Jmax{Jmax}.dat"
+        channels = self.gen_mtx_channels(N, Jmax)
+        MeshPoints, MeshWeights = self.gauss_legendre_line_mesh(0, kmax, N)
+        with open(file_name, "w") as fp:
+            fp.write(f"NMesh:\n{N}\n")
+            fp.write(f"Jmax:\n{Jmax}\n")
+            fp.write(f"NChan:\n{len(channels)}\n")
+            fp.write("Momentum Mesh Points:\n")
+            np.savetxt(fp, MeshPoints, fmt="%.17f")
+            fp.write("Momentum Mesh Weights:\n")
+            np.savetxt(fp, MeshWeights, fmt="%.17f")
+            MeshPoints = MeshPoints * hc
+            MeshWeights = MeshWeights * hc
+            for chan in channels:
+                J = chan[0]
+                Prty = chan[1]
+                S = chan[2]
+                Tz = chan[3]
+                Ndim = chan[4]
+                coup = False
+                if Ndim != N:
+                    coup = True
+                fp.write(f"J:\n{J}\n")
+                fp.write(f"Prty:\n{Prty}\n")
+                fp.write(f"S:\n{S}\n")
+                fp.write(f"Tz:\n{Tz}\n")
+                fp.write(f"Ndim:\n{Ndim}\n")
+                fp.write("V:\n")
+                Tz = 0  # force Tz=0 for isospin symmetric potential
+                if J == 0:
+                    V = np.array([[self.potential(S, S, pi, pj, J, S, Tz) for pj in MeshPoints] for pi in MeshPoints]) * hccubic
+                    np.savetxt(fp, V, fmt="%.17f")
+                else:
+                    if not coup:
+                        V = np.array([[self.potential(J, J, pi, pj, J, S, Tz) for pj in MeshPoints] for pi in MeshPoints]) * hccubic
+                        np.savetxt(fp, V, fmt="%.17f")
+                    else:
+                        Vpp = np.array([[self.potential(J + 1, J + 1, pi, pj, J, S, Tz) for pj in MeshPoints] for pi in MeshPoints])
+                        Vpm = np.array([[self.potential(J + 1, J - 1, pi, pj, J, S, Tz) for pj in MeshPoints] for pi in MeshPoints])
+                        Vmp = np.array([[self.potential(J - 1, J + 1, pi, pj, J, S, Tz) for pj in MeshPoints] for pi in MeshPoints])
+                        Vmm = np.array([[self.potential(J - 1, J - 1, pi, pj, J, S, Tz) for pj in MeshPoints] for pi in MeshPoints])
+                        V = np.block([[Vmm, Vmp], [Vpm, Vpp]]) * hccubic
+                        np.savetxt(fp, V, fmt="%.17f")
+        binary_file = "./" + dir + "/" + f"{self.chiral_type}_iso_kmax{kmax}_N{N}_Jmax{Jmax}.bin"
+        t2 = time.time()
+        profiler.add_timing("Writing .dat", t2 - t1)
+        self.convert_dat_to_binary(file_name, binary_file)
+        t3 = time.time()
+        profiler.add_timing("Writing .bin", t3 - t2)
+        print("files are generated to :\n", file_name, "\n", binary_file)
+
     # Writter of interaction matrix elements in coordinate space, where [rmax] = fm.
     # The resulting interaction mtx are in [MeV].
     def write_mtx_coordinate(self, rmax=4.0, N=100, Jmax=8):
