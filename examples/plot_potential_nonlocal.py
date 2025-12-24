@@ -8,7 +8,7 @@ import chiral_potential as chiral_potential
 import matplotlib.pyplot as plt
 
 # initialize an object for computing T-matrices, phase shifts,
-nn = nn_studio.nn_studio(jmin=0, jmax=1, tzmin=0, tzmax=0, Np=128, mesh_type="gauleg_finite")
+nn = nn_studio.nn_studio(jmin=0, jmax=1, tz=0, Np=128, mesh_type="gauleg_finite")
 
 potential_type = "n3loem"
 
@@ -18,18 +18,15 @@ potential = chiral_potential.two_nucleon_potential(potential_type)
 # give the potential to the nn-analyzer
 nn.V = potential
 
-idx, selected_channel = nn.lookup_channel_idx(l=2, ll=0, s=1, j=1)
-_, potential_matrix = nn.setup_Vmtx(selected_channel[0])
-
-# for plotting potential
-mtx = potential_matrix[1]
+is_coupled, l, s, j, t, tz = False, 0, 0, 0, 0, 0
+potential_matrix = nn.setup_Vmtx(is_coupled, (l, s, j, t, tz))
 
 pp, p = np.meshgrid(nn.pmesh, nn.pmesh)
 
 
-z_min, z_max = -np.abs(mtx).max(), np.abs(mtx).max()
-fig, ax = plt.subplots(figsize=(8, 6), dpi=160)
-c = ax.pcolormesh(p, pp, mtx, cmap="RdBu", vmin=z_min, vmax=z_max)
+z_min, z_max = -np.abs(potential_matrix).max(), np.abs(potential_matrix).max()
+fig, ax = plt.subplots(figsize=(4, 3))
+c = ax.pcolormesh(p, pp, potential_matrix, cmap="RdBu", vmin=z_min, vmax=z_max)
 fig.colorbar(c, ax=ax)
 ax.set_xlabel(r"$p$ (MeV)")
 ax.set_ylabel(r"$p'$ (MeV)")

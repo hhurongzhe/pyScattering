@@ -1,7 +1,7 @@
 import subprocess
 
 # * This script is used to commit changes to a git repository.
-message = "support for isospin symmetric interactions"
+message = "clean up the codes; full support for Coulomb scattering calculations; full support spin observable calculations; benchmarked with Nijmegen data."
 
 
 command1 = "git add ."

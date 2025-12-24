@@ -1,5 +1,5 @@
 # a deuteron solver in position space,
-# written by wang xing and hu rongzhe.
+# written by Rongzhe Hu and Xing Wang.
 # for details, see https://nukephysik101.wordpress.com/2023/02/27/deuteron-wave-function-using-av18/
 
 import sys
@@ -119,16 +119,8 @@ def solve_schrodinger(E, pri1, pri2):
 
         cu1 = 1 + h**2 / 6 * mu * (E - V00rf) / hc**2
         cw2 = 1 + h**2 / 6 * mu * (E - V22rf) / hc**2 - h**2 / 2 / rf**2
-        a1 = (
-            -2 * u[i] * (1 - 5 / 6 * h**2 * mu * (E - V00r) / hc**2)
-            + u[i - 1] * (1 + h**2 / 6 * mu * (E - V00ri) / hc**2)
-            - h**2 / 6 * mu * (10 * V02r * w[i] + V02ri * w[i - 1]) / hc**2
-        )
-        a2 = (
-            -2 * w[i] * (1 - 5 / 6 * h**2 * mu * (E - V22r) / hc**2 + 2.5 * h**2 / r**2)
-            + w[i - 1] * (1 + h**2 / 6 * mu * (E - V22ri) / hc**2 - h**2 / 2 / ri**2)
-            - h**2 / 6 * mu * (10 * V20r * u[i] + V20ri * u[i - 1]) / hc**2
-        )
+        a1 = -2 * u[i] * (1 - 5 / 6 * h**2 * mu * (E - V00r) / hc**2) + u[i - 1] * (1 + h**2 / 6 * mu * (E - V00ri) / hc**2) - h**2 / 6 * mu * (10 * V02r * w[i] + V02ri * w[i - 1]) / hc**2
+        a2 = -2 * w[i] * (1 - 5 / 6 * h**2 * mu * (E - V22r) / hc**2 + 2.5 * h**2 / r**2) + w[i - 1] * (1 + h**2 / 6 * mu * (E - V22ri) / hc**2 - h**2 / 2 / ri**2) - h**2 / 6 * mu * (10 * V20r * u[i] + V20ri * u[i - 1]) / hc**2
         cw1 = h**2 / 6 * mu * V02rf / hc**2
         cu2 = h**2 * mu / 6 * V20rf / hc**2
         u[i + 1] = (-a1 - cw1 / cw2 * a2) / (cu1 - cw1 * cu2 / cw2)
@@ -288,7 +280,7 @@ profiler.add_timing("Cal Observables", t2 - t1)
 ################################################################################################################
 utility.section_message("Plotting Wave Functions")
 
-plt.figure(dpi=240)
+plt.figure()
 plt.plot(r_meshes, ur, color="C0", label=r"$\Psi_{0}$")
 plt.plot(r_meshes, wr, color="C1", label=r"$\Psi_{2}$")
 plt.legend()

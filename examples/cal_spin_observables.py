@@ -17,13 +17,13 @@ utility.section_message("Initialization")
 
 t1 = time.time()
 
-nn = nn_studio.nn_studio(jmin=0, jmax=8, tzmin=0, tzmax=0, Np=32)
+nn = nn_studio.nn_studio(jmin=0, jmax=10, tz=0, Np=200)
 
 nn.Tlabs = [143]
 
-potential_n3loemn500 = chiral_potential.two_nucleon_potential("n3loem")
+potential = chiral_potential.two_nucleon_potential("n3loemn500")
 
-nn.V = potential_n3loemn500
+nn.V = potential
 
 t2 = time.time()
 profiler.add_timing("Initialization", t2 - t1)
@@ -33,7 +33,7 @@ profiler.add_timing("Initialization", t2 - t1)
 ################################################################################################################
 utility.section_message("Solving LS")
 
-nn.compute_Tmtx(nn.channels, verbose=False)
+nn.compute_Tmtx()
 
 t3 = time.time()
 profiler.add_timing("Solving LS", t3 - t2)

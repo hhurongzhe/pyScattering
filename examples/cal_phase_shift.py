@@ -17,7 +17,7 @@ utility.section_message("Initialization")
 
 t1 = time.time()
 
-nn = nn_studio.nn_studio(jmin=0, jmax=1, tzmin=0, tzmax=0, Np=100)
+nn = nn_studio.nn_studio(jmin=0, jmax=1, tz=0, Np=100)
 
 # define the lab neutron-proton kinetic energies that you want to analyze (denser for low T in this case)
 # nn.Tlabs = (
@@ -29,7 +29,7 @@ nn = nn_studio.nn_studio(jmin=0, jmax=1, tzmin=0, tzmax=0, Np=100)
 nn.Tlabs = [1, 5, 10, 25, 50, 100, 150, 200, 250, 300]
 
 # initialize an object for the chiral interaction
-potential = chiral_potential.two_nucleon_potential("loemn500")
+potential = chiral_potential.two_nucleon_potential("n3loemn500")
 
 # give the potential to the nn-analyzer
 nn.V = potential
@@ -42,7 +42,7 @@ profiler.add_timing("Initialization", t2 - t1)
 ################################################################################################################
 utility.section_message("Solving LS")
 
-nn.compute_Tmtx(nn.channels, verbose=True)
+nn.compute_Tmtx()
 
 t3 = time.time()
 

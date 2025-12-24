@@ -10,7 +10,6 @@ import numpy as np
 import math
 import WignerSymbol as ws
 from functools import lru_cache
-from numba import jit
 from tqdm import tqdm
 
 utility.header_message()
@@ -284,7 +283,6 @@ def v_harmonic_lab(
 
 # single particle basis,
 # ( index , n , l , 2j , tz , e )
-@jit(nopython=True)
 def gen_single_particle_basis(emax: int):
     basis_temp = []
     index = 1
@@ -310,7 +308,6 @@ def gen_single_particle_basis(emax: int):
     return basis_temp
 
 
-@jit(nopython=True)
 def gen_two_particle_basis(emax: int, e2max: int):
     basis = gen_single_particle_basis(emax)
     spnum = len(basis)
@@ -335,7 +332,6 @@ def gen_two_particle_basis(emax: int, e2max: int):
     return temp
 
 
-@jit(nopython=True)
 def gen_channels(emax: int, e2max: int):
     temp = []
     tp_basis = gen_two_particle_basis(emax, e2max)

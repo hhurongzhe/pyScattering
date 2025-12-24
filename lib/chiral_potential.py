@@ -28,19 +28,16 @@ from functools import lru_cache
 
 # Chiral two-nucleon potential.
 class two_nucleon_potential:
-    def __init__(self, chiral_type, add_cutoff_coulomb=False):
+    def __init__(self, chiral_type):
         self.chiral_type = chiral_type
         # p mesh points and weights, in [MeV]
         self.pmesh_points, self.pmesh_weights = self.set_up_pmesh()
         # r mesh points and weights, in [fm]
         self.rmesh_points, self.rmesh_weights = self.set_up_rmesh()
-        # if add cut-off coulomb potential, only useful when considering p-p scattering
-        self.add_cutoff_coulomb = add_cutoff_coulomb
-
         # quadrature points for cos(theta) integration
         self.ntheta = 32
         # max j (affects precomputation of meshes for angular integrals)
-        self.jmax = 10
+        self.jmax = 12
         # z = cos(theta)
         self.z, self.w = np.polynomial.legendre.leggauss(self.ntheta)
         self.zJ = [self.z**J for J in range(0, self.jmax + 1)]
@@ -192,9 +189,43 @@ class two_nucleon_potential:
             V = pot.sms(4, 5, ll, l, pp, p, j, s, tz)
         else:
             sys.exit(f"momentum space potential type {self.chiral_type} not implemented yet.")
-        if self.add_cutoff_coulomb:
-            V = V + self.potential_cutoff_coulomb(ll, l, pp, p, j, s, tz)
         return V
+
+    # partial-wave decomposition of central force
+    def pwd_C(self, W, ll, l, pp, p, j, s):
+        # uncoupled singlet
+        if ll == l and l == j and s == 0:
+            V = 2 * self.pwd_integral(W, 0, j)
+            return V
+        # uncoupled triplet
+        elif ll == l and l == j and s == 1:
+            V = 2 * self.pwd_integral(W, 0, j)
+            return V
+        elif ll != j and l != j and s == 1:
+            if ll == (j + 1) and l == (j + 1):
+                V = 2 * self.pwd_integral(W, 0, j + 1)
+                return V
+            # 3P0 case
+            if j == 0:
+                V = 2 * self.pwd_integral(W, 0, j + 1)
+                return V
+            if ll == (j - 1) and l == (j - 1):
+                V = 2 * self.pwd_integral(W, 0, j - 1)
+                return V
+        return 0
+
+    def potential_cutoff_coulomb(self, ll, l, pp, p, j, s, tz, ko):
+        if tz != -1:
+            sys.exit(f"coutoff coulomb potential only for pp channel (tz=-1).")
+        q2 = pp**2 + p**2 - 2 * pp * p * self.z
+        epsilon = 1
+        alpha = const.alpha
+        factor = (1 + 2 * ko * ko / const.Mp**2) / np.sqrt(1 + ko * ko / const.Mp**2)
+        Cc = 4 * np.pi * epsilon * alpha * factor
+        R = 10.0 / const.hbarc  # R = 10 fm
+        Vc = Cc * (1 - np.cos(np.sqrt(q2) * R)) / q2
+        V = self.pwd_C(Vc, ll, l, pp, p, j, s)
+        return (0.125 / np.pi**3) * V
 
     # potential in position space, where r in [fm] and V in [MeV]
     @lru_cache(maxsize=None)
@@ -366,44 +397,6 @@ class two_nucleon_potential:
         if j < 0:
             return
         return np.pi * np.sum(W * self.zJ[l] * self.P[j] * self.w)
-
-    # partial-wave decomposition of central force
-    def pwd_C(self, W, ll, l, pp, p, j, s):
-        # uncoupled singlet
-        if ll == l and l == j and s == 0:
-            V = 2 * self.pwd_integral(W, 0, j)
-            return V
-        # uncoupled triplet
-        elif ll == l and l == j and s == 1:
-            V = 2 * self.pwd_integral(W, 0, j)
-            return V
-        elif ll != j and l != j and s == 1:
-            if ll == (j + 1) and l == (j + 1):
-                V = 2 * self.pwd_integral(W, 0, j + 1)
-                return V
-            # 3P0 case
-            if j == 0:
-                V = 2 * self.pwd_integral(W, 0, j + 1)
-                return V
-            if ll == (j - 1) and l == (j - 1):
-                V = 2 * self.pwd_integral(W, 0, j - 1)
-                return V
-        return 0
-
-    def potential_cutoff_coulomb(self, ll, l, pp, p, j, s, tz, ko):
-        if tz != -1:
-            return 0
-        q2 = pp**2 + p**2 - 2 * pp * p * self.z
-        epsilon = 1
-        alpha = 1.0 / 137.035989
-        factor = (1 + 2 * ko * ko / const.Mp**2) / np.sqrt(1 + ko * ko / const.Mp**2)
-        factor_rela = np.sqrt(const.Mp / np.sqrt(const.Mp**2 + pp**2)) * np.sqrt(const.Mp / np.sqrt(const.Mp**2 + p**2))
-        Cc = 4 * np.pi * epsilon * alpha * factor * factor_rela
-        R = 10.0 / const.hbarc  # R = 10 fm
-        Vc = Cc * (1 - np.cos(np.sqrt(q2) * R)) / q2
-        V = self.pwd_C(Vc, ll, l, pp, p, j, s)
-        # 1/(2pi)^3 normalization
-        return (0.125 / np.pi**3) * V
 
     def gauss_legendre_line_mesh(self, a, b, Np):
         x, w = np.polynomial.legendre.leggauss(Np)

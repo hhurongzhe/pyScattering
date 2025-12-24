@@ -1,4 +1,5 @@
 import numpy as np
+import mpmath
 from functools import lru_cache
 
 
@@ -77,3 +78,19 @@ def sign(x: float) -> float:
         return -1.0
     else:
         return 0.0
+
+
+# calculate Coulomb functions and their derivatives
+def F(l, eta, z):
+    return float(mpmath.coulombf(l, eta, z))
+
+
+def G(l, eta, z):
+    return float(mpmath.coulombg(l, eta, z))
+
+def dF(l, eta, z):
+    return float(mpmath.diff(lambda x: mpmath.coulombf(l, eta, x), z))
+
+
+def dG(l, eta, z):
+    return float(mpmath.diff(lambda x: mpmath.coulombg(l, eta, x), z))

@@ -25,7 +25,7 @@ utility.header_message()
 utility.section_message("Initialization")
 
 # initialize an object for computing T-matrices, phase shifts,
-nn = nn_studio.nn_studio(jmin=0, jmax=1, tzmin=0, tzmax=0, Np=130, mesh_type="gauleg_finite")
+nn = nn_studio.nn_studio(jmin=0, jmax=1, tz=0, Np=130, mesh_type="gauleg_finite")
 
 potential_type = "n4lo+sms450"
 
@@ -38,19 +38,8 @@ nn.V = potential
 
 ################################################################################################################
 
-# the deuteron channel is a coupled triplet and consists of four possible
-# lket (ll) and lbra (l) combinations ('blocks'), i.e., S-S, S-D, D-S, D-D. This lookup function
-# scans all the channels and if it can find a matching block it will return the
-# entire channel to which the block belongs to. That way you will get the deuteron channel
-# if you specify l=0,ll=2,s=1,j=1 or l=2,ll=2,s=1,j=1, or l=0,ll=0,s=1,j=1, or l=0,ll=0,s=1,j=1.
-#
-# print the all channels (a list of dictionaries), and it hopefully more clear. You can of course
-# loop over all channels and pick the deuteron channel manually.
-#
-_, deuteron_channel = nn.lookup_channel_idx(l=0, ll=2, s=1, j=1)
-print(deuteron_channel, "\n")
 
-_, mu = nn.lab2rel(0, 0)
+mu = const.Mp * const.Mn / (const.Mp + const.Mn)
 
 N = 2 * (nn.Np)
 
@@ -72,7 +61,8 @@ print(f"k mesh number : {nn.Np}")
 utility.section_message("Building Potential")
 
 t1 = time.time()
-V = nn.setup_Vmtx(deuteron_channel[0])[0]
+is_coupled, channel = True, (1, 0, 0)
+V = nn.setup_Vmtx(is_coupled, channel)
 t2 = time.time()
 profiler.add_timing("Set up V", t2 - t1)
 ################################################################################################################

@@ -7,17 +7,18 @@ import os
 import time
 import utility
 import profiler
+import basic_math as bm
+import scipy.special as special_function
 
 
 class nn_studio:
-    def __init__(self, jmin, jmax, tzmin, tzmax, Np=75, mesh_type="gauleg_infinite"):
+    def __init__(self, jmin, jmax, tz, Np=75, mesh_type="gauleg_infinite"):
         self.jmin = jmin
         self.jmax = jmax
-        self.tzmin = tzmin
-        self.tzmax = tzmax
-
-        self.basis = self.setup_NN_basis()
-        self.channels = self.setup_NN_channels()
+        self.tz = tz
+        self.channels_uncoupled = []  # (l, s, j, t, tz)
+        self.channels_coupled = []  # (j, t, tz)
+        self.setup_pw_channels()
 
         self.Np = Np
         if mesh_type == "gauleg_infinite":
@@ -31,10 +32,14 @@ class nn_studio:
         self.V = None
 
         # Tmatrices
-        self.Tmtx = []
+        self.Tmtx_uncoupled = []
+        self.Tmtx_coupled = []
+        self.Tmtx_onshell_uncoupled = []
+        self.Tmtx_onshell_coupled = []
 
         # phase shifts
-        self.phase_shifts = []
+        self.phase_shifts_uncoupled = []
+        self.phase_shifts_coupled = []
 
         # theta in degree
         self.theta = np.linspace(1, 180, 180)
@@ -50,163 +55,73 @@ class nn_studio:
         # spin observables
         self.spin_obs = {}
 
-    def setup_NN_basis(self):
-        basis = []
-        for tz in range(self.tzmin, self.tzmax + 1, 1):
-            for J in range(self.jmin, self.jmax + 1, 1):
-                for S in range(0, 2, 1):
-                    for L in range(abs(J - S), J + S + 1, 1):
-                        for T in range(abs(tz), 2, 1):
-                            if (L + S + T) % 2 != 0:
-                                basis_state = {}
-                                basis_state["tz"] = tz
-                                basis_state["l"] = L
-                                basis_state["pi"] = (-1) ** L
-                                basis_state["s"] = S
-                                basis_state["j"] = J
-                                basis_state["t"] = T
-                                basis.append(basis_state)
-        return basis
+    def setup_pw_channels(self):
+        if self.jmin == 0:
+            self.channels_uncoupled.append((0, 0, 0, 1, self.tz))  # 1S0
+            self.channels_uncoupled.append((1, 1, 0, 1, self.tz))  # 3P0
+        # uncoupled channels
+        for j in range(self.jmin, self.jmax + 1):
+            if j == 0:
+                continue
+            for s in [0, 1]:
+                t = 1 - (j + s) % 2
+                if self.tz != 0 and t == 0:
+                    continue
+                self.channels_uncoupled.append((j, s, j, t, self.tz))
+        # coupled channels
+        for j in range(self.jmin, self.jmax + 1):
+            t = 1 - j % 2
+            if self.tz != 0 and t == 0:
+                continue
+            if j == 0:
+                continue
+            self.channels_coupled.append((j, t, self.tz))
 
-    def setup_NN_channels(self):
-        from itertools import groupby
-        from operator import itemgetter
-
-        states = []
-
-        for bra in self.basis:
-            for ket in self.basis:
-                if self.kroenecker_delta(bra, ket, "j", "tz", "s", "pi"):
-                    state = {}
-
-                    state["l"] = bra["l"]
-                    state["ll"] = ket["l"]
-
-                    state["s"] = bra["s"]
-                    state["j"] = bra["j"]
-                    state["t"] = bra["t"]
-                    state["tz"] = bra["tz"]
-                    state["pi"] = bra["pi"]
-                    states.append(state)
-
-        grouper = itemgetter("s", "j", "tz", "pi")
-        NN_channels = []
-
-        for key, grp in groupby(sorted(states, key=grouper), grouper):
-            NN_channels.append(list(grp))
-
-        for chn_idx, chn in enumerate(NN_channels):
-            for block in chn:
-                block.update({"chn_idx": chn_idx})
-
-        return NN_channels
-
-    def lookup_channel_idx(self, **kwargs):
-        matching_indices = []
-        channels = []
-        for idx, chn in enumerate(self.channels):
-            for block in chn:
-                # this will return a channel if any of the partial-wave couplings of a block match
-                if kwargs.items() <= block.items():
-                    matching_indices.append(idx)
-                    channels.append(chn)
-
-        matching_indices = list(dict.fromkeys(matching_indices))
-
-        return matching_indices, channels
-
-    def linear_mesh(self):
-        return np.linspace(1e-6, 650, self.Np)
-
-    def gauss_legendre_line_mesh(self, a, b):
-        x, w = np.polynomial.legendre.leggauss(self.Np)
+    def gauss_legendre_line_mesh(self, a, b, num=None):
+        if num is None:
+            x, w = np.polynomial.legendre.leggauss(self.Np)
+        else:
+            x, w = np.polynomial.legendre.leggauss(num)
         # Translate x values from the interval [-1, 1] to [a, b]
         t = 0.5 * (x + 1) * (b - a) + a
         u = w * 0.5 * (b - a)
-
         return t, u
 
     def gauss_legendre_inf_mesh(self):
         scale = 100.0
-
         x, w = np.polynomial.legendre.leggauss(self.Np)
-
-        # Translate x values from the interval [-1, 1] to [0, inf)
         pi_over_4 = np.pi / 4.0
-
         t = scale * np.tan(pi_over_4 * (x + 1.0))
         u = scale * pi_over_4 / np.cos(pi_over_4 * (x + 1.0)) ** 2 * w
-
         return t, u
 
-    @staticmethod
-    # a static method is bound to a class rather than the objects for that class
-    def triag(a, b, ab):
-        if ab < abs(a - b):
-            return False
-        if ab > a + b:
-            return False
-        return True
-
-    @staticmethod
-    # a static method is bound to a class rather than the objects for that class
-    def kroenecker_delta(bra, ket, *args):
-        for ar in args:
-            if bra[ar] != ket[ar]:
-                return False
-        return True
-
-    def lab2rel(self, Tlab, tz):
-        if tz == -1:
-            mu = const.Mp / 2
-            ko2 = 0.5 * const.Mp * Tlab  #! I correct the factor from 2 to 0.5.
-        elif tz == 0:
-            mu = const.Mp * const.Mn / (const.Mp + const.Mn)
-            ko2 = const.Mp**2 * Tlab * (Tlab + 2 * const.Mn) / ((const.Mp + const.Mn) ** 2 + 2 * Tlab * const.Mp)
-        elif tz == +1:
-            mu = const.Mn / 2
-            ko2 = 0.5 * const.Mn * Tlab  #! I correct the factor from 2 to 0.5.
+    def tzname(self):
+        if self.tz == -1:
+            return "pp"
+        elif self.tz == 0:
+            return "np"
+        elif self.tz == +1:
+            return "nn"
         else:
             exit("unknown isospin projection")
 
+    def lab2rel(self, Tlab):
+        if self.tz == -1:
+            mu = const.Mp / 2
+            ko2 = 0.5 * const.Mp * Tlab
+        elif self.tz == 0:
+            mu = const.Mp * const.Mn / (const.Mp + const.Mn)
+            ko2 = const.Mp**2 * Tlab * (Tlab + 2 * const.Mn) / ((const.Mp + const.Mn) ** 2 + 2 * Tlab * const.Mp)
+        elif self.tz == +1:
+            mu = const.Mn / 2
+            ko2 = 0.5 * const.Mn * Tlab
+        else:
+            exit("unknown isospin projection")
         if ko2 < 0:
             ko = np.complex(0, np.sqrt(np.abs(ko2)))
         else:
             ko = np.sqrt(ko2)
-
         return ko, mu
-
-    @staticmethod
-    # a static method is bound to a class rather than the objects for that class
-    # note that this idx convention is different with Machleidt's codes.
-    def map_to_coup_idx(ll, l, s, j):
-        if l == ll:
-            if l < j:
-                # --
-                coup = True
-                idx = 3
-            elif l > j:
-                # ++
-                coup = True
-                idx = 2
-            else:
-                if s == 1:
-                    coup = False
-                    idx = 1
-                else:
-                    coup = False
-                    idx = 0
-        else:
-            if l < j:
-                # -+
-                coup = True
-                idx = 5
-            else:
-                # +-
-                coup = True
-                idx = 4
-
-        return coup, idx
 
     def Vmtx(self, this_mesh, ll, l, s, j, t, tz):
         mtx = np.zeros((len(this_mesh), len(this_mesh)))
@@ -215,468 +130,272 @@ class nn_studio:
                 mtx[ppidx][pidx] = self.V.potential(ll, l, pp, p, j, s, tz)
         return np.array(mtx)
 
-    def setup_Vmtx(self, this_channel, ko=False):
-        if ko == False:
+    def VCmtx(self, this_mesh, ll, l, s, j, t, tz, ko):
+        mtx = np.zeros((len(this_mesh), len(this_mesh)))
+        for pidx, p in enumerate(this_mesh):
+            for ppidx, pp in enumerate(this_mesh):
+                mtx[ppidx][pidx] = self.V.potential_cutoff_coulomb(ll, l, pp, p, j, s, tz, ko)
+        return np.array(mtx)
+
+    def setup_Vmtx(self, is_coupled, this_channel, ko=None):
+        if ko is None:
             this_mesh = self.pmesh
         else:
             this_mesh = np.hstack((self.pmesh, ko))
-        m = []
-
-        for idx, block in enumerate(this_channel):
-            l = block["l"]
-            ll = block["ll"]
-            s = block["s"]
-            j = block["j"]
-            t = block["t"]
-            tz = block["tz"]
-
-            mtx = np.copy(self.Vmtx(this_mesh, ll, l, s, j, t, tz))
-
-            m.append(mtx)
-
-        if len(this_channel) > 1:
-            # note that m[1], m[2] show be switched compared with original code.
-            V = np.copy(np.vstack((np.hstack((m[0], m[2])), np.hstack((m[1], m[3])))))
+        if not is_coupled:
+            (l, s, j, t, tz) = this_channel
+            V = np.copy(self.Vmtx(this_mesh, l, l, s, j, t, tz))
+            if tz == -1:
+                V += np.copy(self.VCmtx(this_mesh, l, l, s, j, t, tz, ko))
+            return V
         else:
-            V = np.copy(m[0])
-        return V, m
+            (j, t, tz) = this_channel
+            Vmm = np.copy(self.Vmtx(this_mesh, j - 1, j - 1, 1, j, t, tz))
+            Vmp = np.copy(self.Vmtx(this_mesh, j - 1, j + 1, 1, j, t, tz))
+            Vpm = np.copy(self.Vmtx(this_mesh, j + 1, j - 1, 1, j, t, tz))
+            Vpp = np.copy(self.Vmtx(this_mesh, j + 1, j + 1, 1, j, t, tz))
+            if tz == -1:
+                Vmm += np.copy(self.VCmtx(this_mesh, j - 1, j - 1, 1, j, t, tz, ko))
+                Vpp += np.copy(self.VCmtx(this_mesh, j + 1, j + 1, 1, j, t, tz, ko))
+            V = np.copy(np.vstack((np.hstack((Vmm, Vmp)), np.hstack((Vpm, Vpp)))))
+            return V
 
-    def setup_G0_vector(self, ko, mu):
-        G = np.zeros((2 * self.Np + 2), dtype=complex)
+    def setup_G0_vector(self, is_coupled, ko, mu):
+        G0_vec = np.zeros((self.Np + 1), dtype=complex)
+        G0_vec[0 : self.Np] = 2 * mu * self.wmesh * self.pmesh**2 / (ko**2 - self.pmesh**2)
+        G0_vec[self.Np] = -2 * mu * np.sum(self.wmesh / (ko**2 - self.pmesh**2)) * ko**2 - 1j * np.pi * ko * mu
+        return G0_vec
 
-        # note that we index from zero, and the N+1 point is at self.Np
-        G[0 : self.Np] = self.wmesh * self.pmesh**2 / (ko**2 - self.pmesh**2)  # Gaussian integral
+    def setup_VG0_kernel(self, is_coupled, Vmtx, ko, mu):
+        G0_vec = self.setup_G0_vector(is_coupled, ko, mu)
+        VG0 = np.zeros(Vmtx.shape, dtype=complex)
+        if not is_coupled:
+            for i in range(self.Np + 1):
+                VG0[:, i] = Vmtx[:, i] * G0_vec[i]
+        else:
+            for i in range(2 * (self.Np + 1)):
+                VG0[:, i] = Vmtx[:, i] * G0_vec[i % (self.Np + 1)]
+        return VG0
 
-        # print('   G0 pole subtraction')
-        G[self.Np] = -np.sum(self.wmesh / (ko**2 - self.pmesh**2)) * ko**2  # 'Principal value'
-        G[self.Np] -= 1j * ko * (np.pi / 2)
-
-        # python vec[0:n] is the first n elements, i.e., 0,1,2,3,...,n-1
-        G[self.Np + 1 : 2 * self.Np + 2] = G[0 : self.Np + 1]
-        return G * 2 * mu
-
-    def setup_GV_kernel(self, channel, Vmtx, ko, mu):
-        Np = len(self.pmesh)
-        nof_blocks = len(channel)
-        Np_chn = int(np.sqrt(nof_blocks) * (self.Np + 1))
-        # Go-vector dim(u) = 2*len(p)+2
-        G0 = self.setup_G0_vector(ko, mu)
-
-        g = np.copy(G0[0:Np_chn])
-        GV = np.zeros((len(g), len(g)), dtype=complex)
-
-        for g_idx, g_elem in enumerate(g):
-            GV[g_idx, :] = g_elem * Vmtx[g_idx, :]
-
-        return GV
-
-    def setup_VG_kernel(self, channel, Vmtx, ko, mu):
-        Np = len(self.pmesh)
-        nof_blocks = len(channel)
-        Np_chn = int(np.sqrt(nof_blocks) * (self.Np + 1))
-
-        # Go-vector dim(u) = 2*len(p)+2
-        G0 = self.setup_G0_vector(ko, mu)
-        g = np.copy(G0[0:Np_chn])
-        VG = np.zeros((len(g), len(g)), dtype=complex)
-
-        for g_idx, g_elem in enumerate(g):
-            VG[:, g_idx] = g_elem * Vmtx[:, g_idx]
-
-        return VG
-
-    def solve_lippmann_schwinger(self, channel, Vmtx, ko, mu):
-        # matrix inversion:
-        # T = V + VGT
-        # (1-VG)T = V
-        # T = (1-VG)^{-1}V
-
-        VG = self.setup_VG_kernel(channel, Vmtx, ko, mu)
-        VG = np.eye(VG.shape[0]) - VG
-        # golden rule of linear algebra: avoid matrix inversion if you can
-        # T = np.matmul(np.linalg.inv(VG),Vmtx)
-        T = np.linalg.solve(VG, Vmtx)
-
+    def solve_lippmann_schwinger(self, is_coupled, Vmtx, ko, mu):
+        # matrix inversion: T = V + VGT --> T = (1-VG)^{-1}V
+        VG0 = self.setup_VG0_kernel(is_coupled, Vmtx, ko, mu)
+        if not is_coupled:
+            dim = self.Np + 1
+        else:
+            dim = 2 * (self.Np + 1)
+        Id = np.identity(dim)
+        T = np.linalg.solve(Id - VG0, Vmtx)
         return T
 
-    @staticmethod
-    # a static method is bound to a class rather than the objects for that class
-    def compute_phase_shifts(ko, mu, on_shell_T):
+    def compute_phase_shift_uncoupled(self, ko, mu, T):
         rad2deg = 180.0 / np.pi
-
         fac = np.pi * mu * ko
+        S = 1 - 2j * fac * T
+        if np.abs(np.abs(S) - 1.0) > 1e-6:
+            sys.exit("Error: S-matrix is not unitary in uncoupled channel!")
+        delta = (-0.5 * 1j) * np.log(S)
+        return np.real(delta * rad2deg)
 
-        if len(on_shell_T) == 3:
-            T11 = on_shell_T[0]
-            T12 = on_shell_T[1]
-            T22 = on_shell_T[2]
-
-            # Blatt-Biedenharn (BB) convention
-            twoEpsilonJ_BB = np.arctan(2 * T12 / (T11 - T22))  # mixing parameter
-            delta_plus_BB = -0.5 * 1j * np.log(1 - 1j * fac * (T11 + T22) + 1j * fac * (2 * T12) / np.sin(twoEpsilonJ_BB))
-            delta_minus_BB = -0.5 * 1j * np.log(1 - 1j * fac * (T11 + T22) - 1j * fac * (2 * T12) / np.sin(twoEpsilonJ_BB))
-
-            # this version has a numerical instability that I should fix.
-            # Stapp convention (bar-phase shifts) in terms of Blatt-Biedenharn convention
-            # twoEpsilonJ = np.arcsin(
-            #     np.sin(twoEpsilonJ_BB) * np.sin(delta_minus_BB - delta_plus_BB)
-            # )  # mixing parameter
-            # delta_minus = 0.5 * (
-            #     delta_plus_BB
-            #     + delta_minus_BB
-            #     + np.arcsin(np.tan(twoEpsilonJ) / np.tan(twoEpsilonJ_BB))
-            # )
-            # delta_plus = 0.5 * (
-            #     delta_plus_BB
-            #     + delta_minus_BB
-            #     - np.arcsin(np.tan(twoEpsilonJ) / np.tan(twoEpsilonJ_BB))
-            # )
-            # epsilon = 0.5 * twoEpsilonJ
-
-            # numerially stable conversion
-            cos2e = np.cos(twoEpsilonJ_BB / 2) * np.cos(twoEpsilonJ_BB / 2)
-            cos_2dp = np.cos(2 * delta_plus_BB)
-            cos_2dm = np.cos(2 * delta_minus_BB)
-            sin_2dp = np.sin(2 * delta_plus_BB)
-            sin_2dm = np.sin(2 * delta_minus_BB)
-
-            aR = np.real(cos2e * cos_2dm + (1 - cos2e) * cos_2dp)
-            aI = np.real(cos2e * sin_2dm + (1 - cos2e) * sin_2dp)
-            delta_minus = 0.5 * np.arctan2(aI, aR)
-
-            aR = np.real(cos2e * cos_2dp + (1 - cos2e) * cos_2dm)
-            aI = np.real(cos2e * sin_2dp + (1 - cos2e) * sin_2dm)
-            delta_plus = 0.5 * np.arctan2(aI, aR)
-
-            tmp = 0.5 * np.sin(twoEpsilonJ_BB)
-            aR = tmp * (cos_2dm - cos_2dp)
-            aI = tmp * (sin_2dm - sin_2dp)
-            tmp = delta_plus + delta_minus
-            epsilon = 0.5 * np.arcsin(aI * np.cos(tmp) - aR * np.sin(tmp))
-
-            if ko < 150:
-                if delta_minus * rad2deg < 0:
-                    delta_minus += np.pi
-                    epsilon *= -1.0
-            return [
-                np.real(delta_minus * rad2deg),
-                np.real(delta_plus * rad2deg),
-                np.real(epsilon * rad2deg),
-            ]
-
-        else:
-            # uncoupled
-            T = on_shell_T[0]
-            Z = 1 - fac * 2j * T
-            # S=exp(2i*delta)
-            delta = (-0.5 * 1j) * np.log(Z)
-
-            return np.real(delta * rad2deg)
-
-    def compute_Tmtx(self, channels, verbose=False):
-        if verbose:
-            print(f"computing T-matrices for")
-
-        self.Tmtx = []
-        self.phase_shifts = []
-
-        for idx, channel in enumerate(channels):
-            if verbose:
-                print(f"channel = {channel}")
-
-            phase_shifts_for_this_channel = []
-
-            nof_blocks = len(channel)
-
-            for Tlab in self.Tlabs:
-                if verbose:
-                    print(f"Tlab = {Tlab} MeV")
-
-                ko, mu = self.lab2rel(Tlab, channel[0]["tz"])
-                t1 = time.time()
-                Vmtx = self.setup_Vmtx(channel, ko)[0]  # get only V, not the list of submatrices
-                t2 = time.time()
-                profiler.add_timing("Setup V Matrix", t2 - t1)
-                this_T = self.solve_lippmann_schwinger(channel, Vmtx, ko, mu)
-                t3 = time.time()
-                profiler.add_timing("Solve LS", t3 - t2)
-                self.Tmtx.append(this_T)
-
-                Np = this_T.shape[0]
-                # extract the on-shell T elements
-                if nof_blocks > 1:
-                    # coupled
-                    Np = int((Np - 2) / 2)
-                    T11 = this_T[Np, Np]
-                    T12 = this_T[2 * Np + 1, Np]
-                    T22 = this_T[2 * Np + 1, 2 * Np + 1]
-                    on_shell_T = [T11, T12, T22]
-                else:
-                    # uncoupled
-                    Np = Np - 1
-                    T11 = this_T[Np, Np]
-                    on_shell_T = [T11]
-
-                this_phase_shift = self.compute_phase_shifts(ko, mu, on_shell_T)
-                t4 = time.time()
-                profiler.add_timing("Solve Phase Shifts", t4 - t3)
-                phase_shifts_for_this_channel.append(this_phase_shift)
-
-            self.phase_shifts.append(np.array(phase_shifts_for_this_channel))
-
-    def lookup_phase_shift(self, L, Ll, S, J, Tz, koid):
+    def compute_phase_shift_coupled(self, ko, mu, T11, T12, T22):
         rad2deg = 180.0 / np.pi
-        temp = 0
-        indices, channels = self.lookup_channel_idx(l=L, ll=Ll, s=S, j=J, tz=Tz)
-        if L == Ll and L == 1 and S == 1 and J == 0:
-            temp = self.phase_shifts[indices[0]][koid]
-        elif L == Ll and L == J:
-            temp = self.phase_shifts[indices[0]][koid]
-        else:
-            tempp = self.phase_shifts[indices[0]][koid]
-            if L == Ll and L < J:
-                temp = tempp[0]
-            elif L == Ll and L > J:
-                temp = tempp[1]
-            else:
-                temp = tempp[2]
-        return temp / rad2deg
+        fac = np.pi * mu * ko
+        T = np.array([[T11, T12], [T12, T22]])
+        S = np.identity(2) - 2j * fac * T
+        if np.abs(np.abs(np.linalg.det(S)) - 1.0) > 1e-6:
+            sys.exit("Error: S-matrix is not unitary in coupled channel!")
+        # Blatt-Biedenharn (BB) convention
+        twoEpsilonJ_BB = np.arctan(2 * T12 / (T11 - T22))  # mixing parameter
+        delta_plus_BB = -0.5 * 1j * np.log(1 - 1j * fac * (T11 + T22) + 1j * fac * (2 * T12) / np.sin(twoEpsilonJ_BB))
+        delta_minus_BB = -0.5 * 1j * np.log(1 - 1j * fac * (T11 + T22) - 1j * fac * (2 * T12) / np.sin(twoEpsilonJ_BB))
+        # Stapp convention (bar-phase shifts)
+        cos2e = np.cos(twoEpsilonJ_BB / 2) * np.cos(twoEpsilonJ_BB / 2)
+        cos_2dp = np.cos(2 * delta_plus_BB)
+        cos_2dm = np.cos(2 * delta_minus_BB)
+        sin_2dp = np.sin(2 * delta_plus_BB)
+        sin_2dm = np.sin(2 * delta_minus_BB)
+        aR = np.real(cos2e * cos_2dm + (1 - cos2e) * cos_2dp)
+        aI = np.real(cos2e * sin_2dm + (1 - cos2e) * sin_2dp)
+        delta_minus = 0.5 * np.arctan2(aI, aR)
+        aR = np.real(cos2e * cos_2dp + (1 - cos2e) * cos_2dm)
+        aI = np.real(cos2e * sin_2dp + (1 - cos2e) * sin_2dm)
+        delta_plus = 0.5 * np.arctan2(aI, aR)
+        tmp = 0.5 * np.sin(twoEpsilonJ_BB)
+        aR = tmp * (cos_2dm - cos_2dp)
+        aI = tmp * (sin_2dm - sin_2dp)
+        tmp = delta_plus + delta_minus
+        epsilon = 0.5 * np.arcsin(aI * np.cos(tmp) - aR * np.sin(tmp))
+        return [np.real(delta_minus * rad2deg), np.real(delta_plus * rad2deg), np.real(epsilon * rad2deg)]
+
+    def compute_phase_shift_uncoupled_matched(self, ko, mu, Ts, this_channel):
+        rad2deg = 180.0 / np.pi
+        fac = np.pi * mu * ko
+        Rc = 10.0 / const.hbarc
+        z = ko * Rc
+        factor_rel = (1 + 2 * ko * ko / const.Mp**2) / (np.sqrt(1 + ko * ko / const.Mp**2))
+        eta = mu / ko * const.alpha * factor_rel
+        (l, s, j, t, tz) = this_channel
+        S = 1 - 2j * fac * Ts
+        deltaS = (-0.5 * 1j) * np.log(S)
+        # matching...
+        AL0 = (bm.F(l, 0, z) + bm.G(l, 0, z) * np.tan(deltaS)) / (bm.dF(l, 0, z) + bm.dG(l, 0, z) * np.tan(deltaS))
+        deltaC = np.arctan((AL0 * bm.dF(l, eta, z) - bm.F(l, eta, z)) / (bm.G(l, eta, z) - AL0 * bm.dG(l, eta, z)))
+        return np.real(deltaC * rad2deg)
+
+    def compute_phase_shift_coupled_matched(self, ko, mu, Ts11, Ts12, Ts22, this_channel):
+        rad2deg = 180.0 / np.pi
+        fac = np.pi * mu * ko
+        Rc = 10.0 / const.hbarc
+        z = ko * Rc
+        factor_rel = (1 + 2 * ko * ko / const.Mp**2) / (np.sqrt(1 + ko * ko / const.Mp**2))
+        eta = mu / ko * const.alpha * factor_rel
+        # matching...
+        Ts = -fac * np.array([[Ts11, Ts12], [Ts12, Ts22]])
+        A = np.identity(2) + 1j * Ts
+        Rs = Ts @ np.linalg.inv(A)
+        (j, t, tz) = this_channel
+        jm = j - 1
+        jp = j + 1
+        F0mtx = np.array([[bm.F(jm, 0, z), 0], [0, bm.F(jp, 0, z)]]).astype(np.float64)
+        dF0mtx = np.array([[bm.dF(jm, 0, z), 0], [0, bm.dF(jp, 0, z)]]).astype(np.float64)
+        G0mtx = np.array([[bm.G(jm, 0, z), 0], [0, bm.G(jp, 0, z)]]).astype(np.float64)
+        dG0mtx = np.array([[bm.dG(jm, 0, z), 0], [0, bm.dG(jp, 0, z)]]).astype(np.float64)
+        F1mtx = np.array([[bm.F(jm, eta, z), 0], [0, bm.F(jp, eta, z)]]).astype(np.float64)
+        dF1mtx = np.array([[bm.dF(jm, eta, z), 0], [0, bm.dF(jp, eta, z)]]).astype(np.float64)
+        G1mtx = np.array([[bm.G(jm, eta, z), 0], [0, bm.G(jp, eta, z)]]).astype(np.float64)
+        dG1mtx = np.array([[bm.dG(jm, eta, z), 0], [0, bm.dG(jp, eta, z)]]).astype(np.float64)
+        A0 = (F0mtx + G0mtx @ Rs) @ np.linalg.inv(dF0mtx + dG0mtx @ Rs)
+        Rc = np.linalg.inv(G1mtx - A0 @ dG1mtx) @ (A0 @ dF1mtx - F1mtx)
+        Tc = -(1 / fac) * np.linalg.inv(np.identity(2) - 1j * Rc) @ Rc
+        T11c, T12c, T22c = Tc[0, 0], Tc[0, 1], Tc[1, 1]
+        # get matched phase shifts
+        twoEpsilonJ_BB = np.arctan(2 * T12c / (T11c - T22c))
+        delta_plus_BB = -0.5 * 1j * np.log(1 - 1j * fac * (T11c + T22c) + 1j * fac * (2 * T12c) / np.sin(twoEpsilonJ_BB))
+        delta_minus_BB = -0.5 * 1j * np.log(1 - 1j * fac * (T11c + T22c) - 1j * fac * (2 * T12c) / np.sin(twoEpsilonJ_BB))
+        # Stapp convention (bar-phase shifts)
+        cos2e = np.cos(twoEpsilonJ_BB / 2) * np.cos(twoEpsilonJ_BB / 2)
+        cos_2dp = np.cos(2 * delta_plus_BB)
+        cos_2dm = np.cos(2 * delta_minus_BB)
+        sin_2dp = np.sin(2 * delta_plus_BB)
+        sin_2dm = np.sin(2 * delta_minus_BB)
+        aR = np.real(cos2e * cos_2dm + (1 - cos2e) * cos_2dp)
+        aI = np.real(cos2e * sin_2dm + (1 - cos2e) * sin_2dp)
+        delta_minus = 0.5 * np.arctan2(aI, aR)
+        aR = np.real(cos2e * cos_2dp + (1 - cos2e) * cos_2dm)
+        aI = np.real(cos2e * sin_2dp + (1 - cos2e) * sin_2dm)
+        delta_plus = 0.5 * np.arctan2(aI, aR)
+        tmp = 0.5 * np.sin(twoEpsilonJ_BB)
+        aR = tmp * (cos_2dm - cos_2dp)
+        aI = tmp * (sin_2dm - sin_2dp)
+        tmp = delta_plus + delta_minus
+        epsilon = 0.5 * np.arcsin(aI * np.cos(tmp) - aR * np.sin(tmp))
+        return [np.real(delta_minus * rad2deg), np.real(delta_plus * rad2deg), np.real(epsilon * rad2deg)]
+
+    def compute_Tmtx(self):
+        for is_coupled, channels in [(False, self.channels_uncoupled), (True, self.channels_coupled)]:
+            for channel in channels:
+                if not is_coupled:
+                    (l, s, j, t, tz) = channel
+                else:
+                    (j, t, tz) = channel
+                phase_shifts_for_this_channel = []
+                Tmtx_onshell_for_this_channel = []
+                for Tlab in self.Tlabs:
+                    print(f"Tlab = {Tlab} MeV")
+                    ko, mu = self.lab2rel(Tlab)
+                    t1 = time.time()
+                    Vmtx = self.setup_Vmtx(is_coupled, channel, ko)
+                    t2 = time.time()
+                    profiler.add_timing("Setup V Matrix", t2 - t1)
+                    this_T = self.solve_lippmann_schwinger(is_coupled, Vmtx, ko, mu)
+                    t3 = time.time()
+                    profiler.add_timing("Solve LS", t3 - t2)
+                    if not is_coupled:
+                        self.Tmtx_uncoupled.append(this_T)
+                        T_on_shell = this_T[-1, -1]
+                        if tz == -1:
+                            this_phase_shift = self.compute_phase_shift_uncoupled_matched(ko, mu, T_on_shell, channel)
+                        else:
+                            this_phase_shift = self.compute_phase_shift_uncoupled(ko, mu, T_on_shell)
+                    else:
+                        self.Tmtx_coupled.append(this_T)
+                        Np = int((this_T.shape[0] - 2) / 2)
+                        Tmm = this_T[Np, Np]
+                        Tmp = this_T[Np, 2 * Np + 1]
+                        Tpp = this_T[2 * Np + 1, 2 * Np + 1]
+                        T_on_shell = [Tmm, Tmp, Tpp]
+                        if tz == -1:
+                            this_phase_shift = self.compute_phase_shift_coupled_matched(ko, mu, Tmm, Tmp, Tpp, channel)
+                        else:
+                            this_phase_shift = self.compute_phase_shift_coupled(ko, mu, Tmm, Tmp, Tpp)
+                    t4 = time.time()
+                    profiler.add_timing("Solve Phase Shifts", t4 - t3)
+                    Tmtx_onshell_for_this_channel.append(T_on_shell)
+                    phase_shifts_for_this_channel.append(this_phase_shift)
+                if not is_coupled:
+                    self.Tmtx_onshell_uncoupled.append(np.array(Tmtx_onshell_for_this_channel))
+                    self.phase_shifts_uncoupled.append(np.array(phase_shifts_for_this_channel))
+                else:
+                    self.Tmtx_onshell_coupled.append(np.array(Tmtx_onshell_for_this_channel))
+                    self.phase_shifts_coupled.append(np.array(phase_shifts_for_this_channel))
 
     @staticmethod
-    # this convention is the same with Mathematica.
     def sph_harm(l, m, theta, phi):
-        if l < np.abs(m):
-            return 0
-        # different convention in scipy's sph_harm.
-        return scipy.special.sph_harm(m, l, phi, theta)
+        return scipy.special.sph_harm_y(l, m, theta, phi)
 
     def get_spin_coeff(self, Sp, S, mp, m, the, lp, l, j):
         fac1 = np.sqrt(4 * np.pi * (2 * l + 1))
         fac2 = (1j) ** (l - lp)
-        # note ws.CG() use double of the real angular momentum quantum number to avoid half integers
         fac3 = ws.CG(2 * l, 2 * S, 2 * j, 0, 2 * m, 2 * m)
         fac4 = ws.CG(2 * lp, 2 * Sp, 2 * j, 2 * (m - mp), 2 * mp, 2 * m)
         fac5 = self.sph_harm(lp, m - mp, the, 0)
         fac = fac1 * fac2 * fac3 * fac4 * fac5
         return fac
 
-    def compute_m11(self, the, koid, ko):
-        Sp, S, mp, m = 1, 1, 1, 1
+    def get_mmatrix_coulomb(self, the, koid):
+        ko, mu = self.lab2rel(self.Tlabs[koid])
+        eta = mu / ko * const.alpha
+        temp = -1j * eta * np.log(np.sin(the / 2) ** 2)
+        Mc = -eta / (2 * ko * np.sin(the / 2) ** 2) * np.exp(temp)
+        return Mc
+
+    def compute_mmatrix(self, S, mp, m, the, koid):
         temp = 0
-        jmax = self.jmax
-        tz = 0  # only consider np case for now.
+        ko, mu = self.lab2rel(self.Tlabs[koid])
+        for chan_idx, channel in enumerate(self.channels_uncoupled):
+            (l, s, j, t, tz) = channel
+            if s != S:
+                continue
+            Tmtx_onshell_this_channel = self.Tmtx_onshell_uncoupled[chan_idx]
+            Tmtx_onshell_this_ko = Tmtx_onshell_this_channel[koid]
+            T = Tmtx_onshell_this_ko
+            fac = self.get_spin_coeff(s, s, mp, m, the, l, l, j)
+            temp += fac * T
+        if S == 1:
+            for chan_idx, channel in enumerate(self.channels_coupled):
+                (j, t, tz) = channel
+                Tmtx_onshell_this_channel = self.Tmtx_onshell_coupled[chan_idx]
+                Tmtx_onshell_this_ko = Tmtx_onshell_this_channel[koid]
+                Tmm, Tmp, Tpp = Tmtx_onshell_this_ko
+                temp += self.get_spin_coeff(1, 1, mp, m, the, j - 1, j - 1, j) * Tmm
+                temp += self.get_spin_coeff(1, 1, mp, m, the, j - 1, j + 1, j) * Tmp
+                temp += self.get_spin_coeff(1, 1, mp, m, the, j + 1, j - 1, j) * Tmp
+                temp += self.get_spin_coeff(1, 1, mp, m, the, j + 1, j + 1, j) * Tpp
+        if self.tz == -1:
+            temp *= 2
+        return -np.pi * mu * temp
 
-        # j=0 channels: 3P0
-        fac3p0 = self.get_spin_coeff(Sp, S, mp, m, the, 1, 1, 0)
-        del3p0 = self.lookup_phase_shift(1, 1, 1, 0, tz, koid)
-        amp3p0 = (np.exp(2 * 1j * del3p0) - 1) / (2 * 1j * ko)
-        temp = temp + fac3p0 * amp3p0
-
-        # J>=1 channels
-        if jmax > 0:
-            for jtemp in range(1, jmax + 1, 1):
-                # uncoupled triplet
-                fac1 = self.get_spin_coeff(Sp, S, mp, m, the, jtemp, jtemp, jtemp)
-                del1 = self.lookup_phase_shift(jtemp, jtemp, 1, jtemp, tz, koid)
-                amp1 = (np.exp(2 * 1j * del1) - 1) / (2 * 1j * ko)
-                temp = temp + fac1 * amp1
-                # coupled triplet
-                dm = self.lookup_phase_shift(jtemp - 1, jtemp - 1, 1, jtemp, tz, koid)
-                dp = self.lookup_phase_shift(jtemp + 1, jtemp + 1, 1, jtemp, tz, koid)
-                de = self.lookup_phase_shift(jtemp - 1, jtemp + 1, 1, jtemp, tz, koid)
-                amp_m = (np.cos(2 * de) * np.exp(2 * 1j * dm) - 1) / (2 * 1j * ko)
-                amp_p = (np.cos(2 * de) * np.exp(2 * 1j * dp) - 1) / (2 * 1j * ko)
-                amp_e = 1j * np.sin(2 * de) * np.exp(1j * (dm + dp)) / (2 * 1j * ko)
-                for l in {jtemp - 1, jtemp + 1}:
-                    for ll in {jtemp - 1, jtemp + 1}:
-                        fac3 = self.get_spin_coeff(Sp, S, mp, m, the, ll, l, jtemp)
-                        if l == ll and l < jtemp:
-                            temp = temp + fac3 * amp_m
-                        elif l == ll and l > jtemp:
-                            temp = temp + fac3 * amp_p
-                        else:
-                            temp = temp + fac3 * amp_e
-
-        return temp
-
-    def compute_m10(self, the, koid, ko):
-        Sp, S, mp, m = 1, 1, 1, 0
-        temp = 0
-        jmax = self.jmax
-        tz = 0  # only consider np case for now.
-
-        # j=0 channels: 3P0
-        fac3p0 = self.get_spin_coeff(Sp, S, mp, m, the, 1, 1, 0)
-        del3p0 = self.lookup_phase_shift(1, 1, 1, 0, tz, koid)
-        amp3p0 = (np.exp(2 * 1j * del3p0) - 1) / (2 * 1j * ko)
-        temp = temp + fac3p0 * amp3p0
-
-        # J>=1 channels
-        if jmax > 0:
-            for jtemp in range(1, jmax + 1, 1):
-                # uncoupled triplet
-                fac1 = self.get_spin_coeff(Sp, S, mp, m, the, jtemp, jtemp, jtemp)
-                del1 = self.lookup_phase_shift(jtemp, jtemp, 1, jtemp, tz, koid)
-                amp1 = (np.exp(2 * 1j * del1) - 1) / (2 * 1j * ko)
-                temp = temp + fac1 * amp1
-                # coupled triplet
-                dm = self.lookup_phase_shift(jtemp - 1, jtemp - 1, 1, jtemp, tz, koid)
-                dp = self.lookup_phase_shift(jtemp + 1, jtemp + 1, 1, jtemp, tz, koid)
-                de = self.lookup_phase_shift(jtemp - 1, jtemp + 1, 1, jtemp, tz, koid)
-                amp_m = (np.cos(2 * de) * np.exp(2 * 1j * dm) - 1) / (2 * 1j * ko)
-                amp_p = (np.cos(2 * de) * np.exp(2 * 1j * dp) - 1) / (2 * 1j * ko)
-                amp_e = 1j * np.sin(2 * de) * np.exp(1j * (dm + dp)) / (2 * 1j * ko)
-                for l in {jtemp - 1, jtemp + 1}:
-                    for ll in {jtemp - 1, jtemp + 1}:
-                        fac3 = self.get_spin_coeff(Sp, S, mp, m, the, ll, l, jtemp)
-                        if l == ll and l < jtemp:
-                            temp = temp + fac3 * amp_m
-                        elif l == ll and l > jtemp:
-                            temp = temp + fac3 * amp_p
-                        else:
-                            temp = temp + fac3 * amp_e
-
-        return temp
-
-    def compute_mpm(self, the, koid, ko):
-        Sp, S, mp, m = 1, 1, 1, -1
-        temp = 0
-        jmax = self.jmax
-        tz = 0  # only consider np case for now.
-
-        # j=0 channels: 3P0
-        fac3p0 = self.get_spin_coeff(Sp, S, mp, m, the, 1, 1, 0)
-        del3p0 = self.lookup_phase_shift(1, 1, 1, 0, tz, koid)
-        amp3p0 = (np.exp(2 * 1j * del3p0) - 1) / (2 * 1j * ko)
-        temp = temp + fac3p0 * amp3p0
-
-        # J>=1 channels
-        if jmax > 0:
-            for jtemp in range(1, jmax + 1, 1):
-                # uncoupled triplet
-                fac1 = self.get_spin_coeff(Sp, S, mp, m, the, jtemp, jtemp, jtemp)
-                del1 = self.lookup_phase_shift(jtemp, jtemp, 1, jtemp, tz, koid)
-                amp1 = (np.exp(2 * 1j * del1) - 1) / (2 * 1j * ko)
-                temp = temp + fac1 * amp1
-                # coupled triplet
-                dm = self.lookup_phase_shift(jtemp - 1, jtemp - 1, 1, jtemp, tz, koid)
-                dp = self.lookup_phase_shift(jtemp + 1, jtemp + 1, 1, jtemp, tz, koid)
-                de = self.lookup_phase_shift(jtemp - 1, jtemp + 1, 1, jtemp, tz, koid)
-                amp_m = (np.cos(2 * de) * np.exp(2 * 1j * dm) - 1) / (2 * 1j * ko)
-                amp_p = (np.cos(2 * de) * np.exp(2 * 1j * dp) - 1) / (2 * 1j * ko)
-                amp_e = 1j * np.sin(2 * de) * np.exp(1j * (dm + dp)) / (2 * 1j * ko)
-                for l in {jtemp - 1, jtemp + 1}:
-                    for ll in {jtemp - 1, jtemp + 1}:
-                        fac3 = self.get_spin_coeff(Sp, S, mp, m, the, ll, l, jtemp)
-                        if l == ll and l < jtemp:
-                            temp = temp + fac3 * amp_m
-                        elif l == ll and l > jtemp:
-                            temp = temp + fac3 * amp_p
-                        else:
-                            temp = temp + fac3 * amp_e
-
-        return temp
-
-    def compute_m01(self, the, koid, ko):
-        Sp, S, mp, m = 1, 1, 0, 1
-        temp = 0
-        jmax = self.jmax
-        tz = 0  # only consider np case for now.
-
-        # j=0 channels: 3P0
-        fac3p0 = self.get_spin_coeff(Sp, S, mp, m, the, 1, 1, 0)
-        del3p0 = self.lookup_phase_shift(1, 1, 1, 0, tz, koid)
-        amp3p0 = (np.exp(2 * 1j * del3p0) - 1) / (2 * 1j * ko)
-        temp = temp + fac3p0 * amp3p0
-
-        # J>=1 channels
-        if jmax > 0:
-            for jtemp in range(1, jmax + 1, 1):
-                # uncoupled triplet
-                fac1 = self.get_spin_coeff(Sp, S, mp, m, the, jtemp, jtemp, jtemp)
-                del1 = self.lookup_phase_shift(jtemp, jtemp, 1, jtemp, tz, koid)
-                amp1 = (np.exp(2 * 1j * del1) - 1) / (2 * 1j * ko)
-                temp = temp + fac1 * amp1
-                # coupled triplet
-                dm = self.lookup_phase_shift(jtemp - 1, jtemp - 1, 1, jtemp, tz, koid)
-                dp = self.lookup_phase_shift(jtemp + 1, jtemp + 1, 1, jtemp, tz, koid)
-                de = self.lookup_phase_shift(jtemp - 1, jtemp + 1, 1, jtemp, tz, koid)
-                amp_m = (np.cos(2 * de) * np.exp(2 * 1j * dm) - 1) / (2 * 1j * ko)
-                amp_p = (np.cos(2 * de) * np.exp(2 * 1j * dp) - 1) / (2 * 1j * ko)
-                amp_e = 1j * np.sin(2 * de) * np.exp(1j * (dm + dp)) / (2 * 1j * ko)
-                for l in {jtemp - 1, jtemp + 1}:
-                    for ll in {jtemp - 1, jtemp + 1}:
-                        fac3 = self.get_spin_coeff(Sp, S, mp, m, the, ll, l, jtemp)
-                        if l == ll and l < jtemp:
-                            temp = temp + fac3 * amp_m
-                        elif l == ll and l > jtemp:
-                            temp = temp + fac3 * amp_p
-                        else:
-                            temp = temp + fac3 * amp_e
-
-        return temp
-
-    def compute_m00(self, the, koid, ko):
-        Sp, S, mp, m = 1, 1, 0, 0
-        temp = 0
-        jmax = self.jmax
-        tz = 0  # only consider np case for now.
-
-        # j=0 channels: 3P0
-        fac3p0 = self.get_spin_coeff(Sp, S, mp, m, the, 1, 1, 0)
-        del3p0 = self.lookup_phase_shift(1, 1, 1, 0, tz, koid)
-        amp3p0 = (np.exp(2 * 1j * del3p0) - 1) / (2 * 1j * ko)
-        temp = temp + fac3p0 * amp3p0
-
-        # J>=1 channels
-        if jmax > 0:
-            for jtemp in range(1, jmax + 1, 1):
-                # uncoupled triplet
-                fac1 = self.get_spin_coeff(Sp, S, mp, m, the, jtemp, jtemp, jtemp)
-                del1 = self.lookup_phase_shift(jtemp, jtemp, 1, jtemp, tz, koid)
-                amp1 = (np.exp(2 * 1j * del1) - 1) / (2 * 1j * ko)
-                temp = temp + fac1 * amp1
-                # coupled triplet
-                dm = self.lookup_phase_shift(jtemp - 1, jtemp - 1, 1, jtemp, tz, koid)
-                dp = self.lookup_phase_shift(jtemp + 1, jtemp + 1, 1, jtemp, tz, koid)
-                de = self.lookup_phase_shift(jtemp - 1, jtemp + 1, 1, jtemp, tz, koid)
-                amp_m = (np.cos(2 * de) * np.exp(2 * 1j * dm) - 1) / (2 * 1j * ko)
-                amp_p = (np.cos(2 * de) * np.exp(2 * 1j * dp) - 1) / (2 * 1j * ko)
-                amp_e = 1j * np.sin(2 * de) * np.exp(1j * (dm + dp)) / (2 * 1j * ko)
-                for l in {jtemp - 1, jtemp + 1}:
-                    for ll in {jtemp - 1, jtemp + 1}:
-                        fac3 = self.get_spin_coeff(Sp, S, mp, m, the, ll, l, jtemp)
-                        if l == ll and l < jtemp:
-                            temp = temp + fac3 * amp_m
-                        elif l == ll and l > jtemp:
-                            temp = temp + fac3 * amp_p
-                        else:
-                            temp = temp + fac3 * amp_e
-
-        return temp
-
-    def compute_mss(self, the, koid, ko):
-        Sp, S, mp, m = 0, 0, 0, 0
-        temp = 0
-        jmax = self.jmax
-        tz = 0  # only consider np case for now.
-
-        # j=0 channels: 1S0
-        fac1s0 = self.get_spin_coeff(Sp, S, mp, m, the, 0, 0, 0)
-        del1s0 = self.lookup_phase_shift(0, 0, 0, 0, tz, koid)
-        amp1s0 = (np.exp(2 * 1j * del1s0) - 1) / (2 * 1j * ko)
-        temp = temp + fac1s0 * amp1s0
-
-        # J>=1 channels
-        if jmax > 0:
-            for jtemp in range(1, jmax + 1, 1):
-                # uncoupled singlet
-                fac1 = self.get_spin_coeff(Sp, S, mp, m, the, jtemp, jtemp, jtemp)
-                del1 = self.lookup_phase_shift(jtemp, jtemp, 0, jtemp, tz, koid)
-                amp1 = (np.exp(2 * 1j * del1) - 1) / (2 * 1j * ko)
-                temp = temp + fac1 * amp1
-
-        return temp
+    def get_all_mmatrix(self, the, koid):
+        m11 = self.compute_mmatrix(1, 1, 1, the, koid)
+        m10 = self.compute_mmatrix(1, 1, 0, the, koid)
+        mpm = self.compute_mmatrix(1, 1, -1, the, koid)
+        m01 = self.compute_mmatrix(1, 0, 1, the, koid)
+        m00 = self.compute_mmatrix(1, 0, 0, the, koid)
+        mss = self.compute_mmatrix(0, 0, 0, the, koid)
+        check = m11 - m00 - np.sqrt(2) * (m10 + m01) * np.cos(the) / np.sin(the) - mpm
+        if np.abs(check) > 1e-9:
+            sys.exit(f"Error: Spin matrix relation not satisfied: {check}")
+        return m11, m10, mpm, m01, m00, mss
 
     def build_m_matrix(self):
         ws.init(20, "Jmax", 3)
@@ -687,8 +406,6 @@ class nn_studio:
         self.m00 = []
         self.mss = []
         for idx, Tlab in enumerate(self.Tlabs):
-            tz = 0
-            ko, mu = self.lab2rel(Tlab, tz)
             temp_m11 = []
             temp_m10 = []
             temp_mpm = []
@@ -698,12 +415,7 @@ class nn_studio:
             for the in self.theta:
                 # from degree to rad
                 the = the * np.pi / 180
-                m11 = self.compute_m11(the, idx, ko)
-                m10 = self.compute_m10(the, idx, ko)
-                mpm = self.compute_mpm(the, idx, ko)
-                m01 = self.compute_m01(the, idx, ko)
-                m00 = self.compute_m00(the, idx, ko)
-                mss = self.compute_mss(the, idx, ko)
+                m11, m10, mpm, m01, m00, mss = self.get_all_mmatrix(the, idx)
                 temp_m11.append(m11)
                 temp_m10.append(m10)
                 temp_mpm.append(mpm)
@@ -728,16 +440,24 @@ class nn_studio:
         self.spin_obs["Axx"] = np.zeros((len(self.Tlabs), len(self.theta)))
         self.spin_obs["Azz"] = np.zeros((len(self.Tlabs), len(self.theta)))
         self.spin_obs["Axz"] = np.zeros((len(self.Tlabs), len(self.theta)))
+        self.spin_obs["TSG"] = np.zeros(len(self.Tlabs))
         for idx, Tlab in enumerate(self.Tlabs):
             for idx_the, the in enumerate(self.theta):
+                the = the * np.pi / 180
                 m11 = self.m11[idx][idx_the]
                 m10 = self.m10[idx][idx_the]
                 mpm = self.mpm[idx][idx_the]
                 m01 = self.m01[idx][idx_the]
                 m00 = self.m00[idx][idx_the]
                 mss = self.mss[idx][idx_the]
+                if self.tz == -1:
+                    fcs = self.get_mmatrix_coulomb(the, idx) + self.get_mmatrix_coulomb(np.pi - the, idx)
+                    fca = self.get_mmatrix_coulomb(the, idx) - self.get_mmatrix_coulomb(np.pi - the, idx)
+                    mss += fcs
+                    m11 += fca
+                    m00 += fca
                 I0 = 0.5 * np.abs(m11) ** 2 + 0.5 * np.abs(m10) ** 2 + 0.5 * np.abs(mpm) ** 2 + 0.5 * np.abs(m01) ** 2 + 0.25 * np.abs(m00) ** 2 + 0.25 * np.abs(mss) ** 2
-                I01D = 0.25 * np.abs(m11 + mpm - mss) ** 2 + 0.25 * np.abs(m11 - mpm - m00) ** 2 + 0.5 * np.abs(m10 + m01) ** 2  # I0(1-D)
+                I01D = 0.25 * np.abs(m11 + mpm - mss) ** 2 + 0.25 * np.abs(m11 - mpm - m00) ** 2 + 0.5 * np.abs(m10 + m01) ** 2
                 I0P = np.sqrt(2) / 4.0 * np.real(1j * (m10 - m01) * np.conj(m11 - mpm + m00))
                 I0A = -0.5 * np.real((m00 + np.sqrt(2) * (np.cos(the) + 1) / np.sin(the) * m10) * np.conj(m11 + mpm + mss) - np.sqrt(2) / np.sin(the) * (m10 + m01) * np.conj(m11 + mpm)) * np.sin(the / 2.0)
                 I0R = 0.5 * np.real((m00 + np.sqrt(2) * (np.cos(the) - 1) / np.sin(the) * m10) * np.conj(m11 + mpm + mss) + np.sqrt(2) / np.sin(the) * (m10 + m01) * np.conj(mss)) * np.cos(the / 2)
@@ -745,7 +465,7 @@ class nn_studio:
                 I0Axx = 0.25 * np.abs(m00) ** 2 - 0.25 * np.abs(mss) ** 2 - 0.5 * np.abs(m01) ** 2 + 0.5 * np.abs(m10) ** 2 + np.real(m11 * np.conj(mpm))
                 I0Azz = 0.5 * np.abs(m11) ** 2 - 0.25 * np.abs(m00) ** 2 - 0.25 * np.abs(mss) ** 2 + 0.5 * np.abs(m01) ** 2 - 0.5 * np.abs(m10) ** 2 + 0.5 * np.abs(mpm) ** 2
                 I0Axz = 0.25 * np.tan(the) * (np.abs(m11 - mpm) ** 2 - np.abs(m00) ** 2) - 0.5 / np.tan(the) * (np.abs(m01) ** 2 - np.abs(m10) ** 2)
-                self.spin_obs["DSG"][idx][idx_the] = I0
+                self.spin_obs["DSG"][idx][idx_the] = I0 * 10 * const.hbarc**2
                 self.spin_obs["D"][idx][idx_the] = 1 - I01D / I0
                 self.spin_obs["P"][idx][idx_the] = I0P / I0
                 self.spin_obs["A"][idx][idx_the] = I0A / I0
@@ -754,6 +474,8 @@ class nn_studio:
                 self.spin_obs["Axx"][idx][idx_the] = I0Axx / I0
                 self.spin_obs["Azz"][idx][idx_the] = I0Azz / I0
                 self.spin_obs["Axz"][idx][idx_the] = I0Axz / I0
+            TSG_this = np.sum(self.spin_obs["DSG"][idx] * np.sin(self.theta * np.pi / 180)) * np.pi / 180
+            self.spin_obs["TSG"][idx] = TSG_this
 
     @staticmethod
     def write_arrays_to_file(filename, column_names, arrays, width=24, precision=4):
@@ -780,7 +502,7 @@ class nn_studio:
         if not os.path.exists(dir):
             os.makedirs(dir)
         for idx, tlab in enumerate(self.Tlabs):
-            file_name = "./" + dir + "/" + f"spin_observables_{self.V.chiral_type}_tlab{tlab}_Jmax{self.jmax}.txt"
+            file_name = "./" + dir + "/" + f"spin_observables_{self.V.chiral_type}_tlab{tlab}_Jmax{self.jmax}_{self.tzname()}.txt"
             name_list = ["theta", "DSG", "D", "P", "A", "R", "Rp", "Axx", "Azz", "Axz"]
             self.write_arrays_to_file(
                 file_name,
@@ -799,18 +521,17 @@ class nn_studio:
                 ],
             )
 
-    def make_partial_wave_name(self):
+    def make_partial_wave_name(self, is_coupled, channel):
         orbit_table = "SPDFGHIJKLMNOQRTUVWXYZ"
-        name = []
-        name.append("1S0")
-        name.append("3P0")
-        for jtemp in range(1, self.jmax + 1, 1):
-            name.append("1" + orbit_table[jtemp] + str(jtemp))
-            name.append("3" + orbit_table[jtemp] + str(jtemp))
-        for jtemp in range(1, self.jmax + 1, 1):
-            name.append("3" + orbit_table[jtemp - 1] + str(jtemp))
-            name.append("3" + orbit_table[jtemp + 1] + str(jtemp))
-            name.append("E" + str(jtemp))
+        if not is_coupled:
+            (l, s, j, t, tz) = channel
+            name = [f"{2*s+1}{orbit_table[l]}{j}"]
+        else:
+            (j, t, tz) = channel
+            name_mm = f"3{orbit_table[j-1]}{j}"
+            name_pp = f"3{orbit_table[j+1]}{j}"
+            name_e = f"E{j}"
+            name = [name_mm, name_pp, name_e]
         return name
 
     # Writter of phase shifts
@@ -818,21 +539,19 @@ class nn_studio:
         dir = "result"  # observables files are generated in this dir.
         if not os.path.exists(dir):
             os.makedirs(dir)
-        file_name = "./" + dir + "/" + f"phase_shifts_{self.V.chiral_type}_Jmax{self.jmax}.txt"
-        name_list = ["Tlab"] + self.make_partial_wave_name()
+        file_name = "./" + dir + "/" + f"phase_shifts_{self.V.chiral_type}_Jmax{self.jmax}_{self.tzname()}.txt"
+        name_list = ["Tlab"]
         phases = [self.Tlabs]
-        indice, channel = self.lookup_channel_idx(l=0, ll=0, s=0, j=0)
-        phases.append(self.phase_shifts[indice[0]])
-        indice, channel = self.lookup_channel_idx(l=1, ll=1, s=1, j=0)
-        phases.append(self.phase_shifts[indice[0]])
-        for jtemp in range(1, self.jmax + 1, 1):
-            indice, channel = self.lookup_channel_idx(l=jtemp, ll=jtemp, s=0, j=jtemp)
-            phases.append(self.phase_shifts[indice[0]])
-            indice, channel = self.lookup_channel_idx(l=jtemp, ll=jtemp, s=1, j=jtemp)
-            phases.append(self.phase_shifts[indice[0]])
-        for jtemp in range(1, self.jmax + 1, 1):
-            indice, channel = self.lookup_channel_idx(l=jtemp + 1, ll=jtemp - 1, s=1, j=jtemp)
-            phases.append(self.phase_shifts[indice[0]][:, 0])
-            phases.append(self.phase_shifts[indice[0]][:, 1])
-            phases.append(self.phase_shifts[indice[0]][:, 2])
+        # 1. Process Uncoupled Channels
+        for idx, channel in enumerate(self.channels_uncoupled):
+            name_list.extend(self.make_partial_wave_name(False, channel))
+            phases.append(self.phase_shifts_uncoupled[idx])
+        # 2. Process Coupled Channels
+        for idx, channel in enumerate(self.channels_coupled):
+            name_list.extend(self.make_partial_wave_name(True, channel))
+            coupled_data = self.phase_shifts_coupled[idx]
+            phases.append(coupled_data[:, 0])
+            phases.append(coupled_data[:, 1])
+            phases.append(coupled_data[:, 2])
+        # 3. Write to file
         self.write_arrays_to_file(file_name, name_list, phases)
