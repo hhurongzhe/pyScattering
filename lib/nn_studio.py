@@ -225,6 +225,10 @@ class nn_studio:
         aI = tmp * (sin_2dm - sin_2dp)
         tmp = delta_plus + delta_minus
         epsilon = 0.5 * np.arcsin(aI * np.cos(tmp) - aR * np.sin(tmp))
+        if ko < 150:
+            if delta_minus < 0:
+                delta_minus += np.pi
+                epsilon *= -1.0
         return [np.real(delta_minus * rad2deg), np.real(delta_plus * rad2deg), np.real(epsilon * rad2deg)]
 
     def compute_phase_shift_uncoupled_matched(self, ko, mu, Ts, this_channel):
@@ -354,14 +358,57 @@ class nn_studio:
 
     def get_mmatrix_coulomb(self, the, koid):
         ko, mu = self.lab2rel(self.Tlabs[koid])
-        eta = mu / ko * const.alpha
+        factor_rel = (1 + 2 * ko * ko / const.Mp**2) / np.sqrt(1 + ko * ko / const.Mp**2)
+        eta = mu / ko * const.alpha * factor_rel
         temp = -1j * eta * np.log(np.sin(the / 2) ** 2)
         Mc = -eta / (2 * ko * np.sin(the / 2) ** 2) * np.exp(temp)
         return Mc
 
+    @staticmethod
+    def get_coulomb_phase(l, eta):
+        return np.angle(special_function.gamma(l + 1 + 1j * eta))
+
     def compute_mmatrix(self, S, mp, m, the, koid):
-        temp = 0
         ko, mu = self.lab2rel(self.Tlabs[koid])
+        # For pp, reconstruct nuclear amplitudes from Coulomb-matched phase shifts
+        # and include Coulomb phase factors to keep the pp formula chain consistent.
+        if self.tz == -1:
+            factor_rel = (1 + 2 * ko * ko / const.Mp**2) / np.sqrt(1 + ko * ko / const.Mp**2)
+            eta = mu / ko * const.alpha * factor_rel
+            sigma_cache = {}
+
+            def sigma(l):
+                if l not in sigma_cache:
+                    sigma_cache[l] = self.get_coulomb_phase(l, eta)
+                return sigma_cache[l]
+
+            temp = 0j
+            for chan_idx, channel in enumerate(self.channels_uncoupled):
+                (l, s, j, t, tz) = channel
+                if s != S:
+                    continue
+                delta = np.deg2rad(self.phase_shifts_uncoupled[chan_idx][koid])
+                amp = np.exp(2j * sigma(l)) * (np.exp(2j * delta) - 1) / (2j * ko)
+                fac = self.get_spin_coeff(s, s, mp, m, the, l, l, j)
+                temp += fac * amp
+
+            if S == 1:
+                for chan_idx, channel in enumerate(self.channels_coupled):
+                    (j, t, tz) = channel
+                    dm, dp, de = np.deg2rad(self.phase_shifts_coupled[chan_idx][koid])
+                    sm = sigma(j - 1)
+                    sp = sigma(j + 1)
+                    amp_m = np.exp(2j * sm) * (np.cos(2 * de) * np.exp(2j * dm) - 1) / (2j * ko)
+                    amp_p = np.exp(2j * sp) * (np.cos(2 * de) * np.exp(2j * dp) - 1) / (2j * ko)
+                    amp_e = np.exp(1j * (sm + sp)) * (1j * np.sin(2 * de) * np.exp(1j * (dm + dp))) / (2j * ko)
+                    temp += self.get_spin_coeff(1, 1, mp, m, the, j - 1, j - 1, j) * amp_m
+                    temp += self.get_spin_coeff(1, 1, mp, m, the, j - 1, j + 1, j) * amp_e
+                    temp += self.get_spin_coeff(1, 1, mp, m, the, j + 1, j - 1, j) * amp_e
+                    temp += self.get_spin_coeff(1, 1, mp, m, the, j + 1, j + 1, j) * amp_p
+
+            return 2 * temp
+
+        temp = 0
         for chan_idx, channel in enumerate(self.channels_uncoupled):
             (l, s, j, t, tz) = channel
             if s != S:
@@ -381,8 +428,6 @@ class nn_studio:
                 temp += self.get_spin_coeff(1, 1, mp, m, the, j - 1, j + 1, j) * Tmp
                 temp += self.get_spin_coeff(1, 1, mp, m, the, j + 1, j - 1, j) * Tmp
                 temp += self.get_spin_coeff(1, 1, mp, m, the, j + 1, j + 1, j) * Tpp
-        if self.tz == -1:
-            temp *= 2
         return -np.pi * mu * temp
 
     def get_all_mmatrix(self, the, koid):

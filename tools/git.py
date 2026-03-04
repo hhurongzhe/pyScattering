@@ -1,7 +1,7 @@
 import subprocess
 
 # * This script is used to commit changes to a git repository.
-message = "clean up the codes; full support for Coulomb scattering calculations; full support spin observable calculations; benchmarked with Nijmegen data."
+message = "correct an important bug when calculating pp scattering observables."
 
 
 command1 = "git add ."
