@@ -1,7 +1,7 @@
 import subprocess
 
 # * This script is used to commit changes to a git repository.
-message = "correct an important bug when calculating pp scattering observables."
+message = "update to the newest AV18 module, test completed; optimize nonlocal_projection suggested by Haoyu Shang; add phase-shift plotting script."
 
 
 command1 = "git add ."

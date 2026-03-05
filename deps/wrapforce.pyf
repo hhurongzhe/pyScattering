@@ -452,7 +452,6 @@ python module force_module ! in
             real*8 :: idahopot
         end function idahopot
         function av18pot(lpot,lp,l,s,j,tz,r) ! in :force_module:wrapforce.f90
-            use av18pwmodule, only: av18pw
             integer intent(in) :: lpot
             integer intent(in) :: lp
             integer intent(in) :: l

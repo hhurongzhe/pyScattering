@@ -1220,63 +1220,64 @@ end function
 
 
 function av18pot(lpot,lp,l,s,j,Tz,r)
-    use av18pwmodule, only : av18pw
     implicit none
     real*8 :: av18pot
-    integer,intent(in) :: lpot,lp,l,j,s,Tz
+    integer,intent(in) :: lpot,lp,l,s,j,Tz
     real*8,intent(in) :: r
-    integer :: t,t1z,t2z
+    integer :: t, t1z, t2z, lcall
     real*8 :: vpw(2,2)
+    external :: av18pw
 
-    if(Tz .eq. -1)then
-        t1z=1
-        t2z=1
-    else if(Tz .eq. 1)then
-        t1z=-1
-        t2z=-1
-    else if(Tz .eq. 0)then
-        t1z=-1
-        t2z=1
-    else
-        write(*,*) "error"
+    av18pot = 0.0d0
+    vpw = 0.0d0
+
+    ! Tz convention:
+    !   -1 -> pp, 0 -> np (p,n), +1 -> nn
+    select case (Tz)
+    case (-1)
+        t1z = 1
+        t2z = 1
+    case (0)
+        t1z = 1
+        t2z = -1
+    case (1)
+        t1z = -1
+        t2z = -1
+    case default
+        write(*,*) "av18pot: bad Tz = ", Tz
         return
-    end if
+    end select
 
-    t = mod(l+s+1,2)
+    t = mod(l + s + 1, 2)
 
-    call av18pw(lpot,l,s,j,t,t1z,t2z,r,vpw)
+    ! Coupled triplet channels:
+    ! av18pw returns a full 2x2 only when called with l = j-1.
+    if (s .eq. 1 .and. j .gt. 0 .and. &
+        ((l .eq. j-1 .or. l .eq. j+1) .and. (lp .eq. j-1 .or. lp .eq. j+1))) then
+        lcall = j - 1
+        call av18pw(lpot, lcall, s, j, t, t1z, t2z, r, vpw)
 
-    if(j .eq. 0)then
-        if( (s .eq. 0) .and. (lp .eq. 0) .and. (l .eq. 0) ) then
-            av18pot=vpw(1,1)
-        else if(( (s .eq. 1) .and. (lp .eq. 1) .and. (l .eq. 1) ))then
-            av18pot=vpw(1,1)
+        if (l .eq. j-1 .and. lp .eq. j-1) then
+            av18pot = vpw(1,1)
+        else if (l .eq. j+1 .and. lp .eq. j+1) then
+            av18pot = vpw(2,2)
+        else if (l .eq. j-1 .and. lp .eq. j+1) then
+            av18pot = vpw(1,2)
+        else if (l .eq. j+1 .and. lp .eq. j-1) then
+            av18pot = vpw(2,1)
         else
-            write(*,*) "error"
-            return
-        end if
-    else if(j .gt. 0)then
-        if( (s .eq. 0) .and. (lp .eq. j) .and. (l .eq. j) ) then
-            av18pot=vpw(1,1)
-        else if(( (s .eq. 1) .and. (lp .eq. j) .and. (l .eq. j) ))then
-            av18pot=vpw(1,1)
-        else if(( (s .eq. 1) .and. (lp .eq. j+1) .and. (l .eq. j+1) ))then
-            call av18pw(lpot,l-2,s,j,t,t1z,t2z,r,vpw)
-            av18pot=vpw(2,2)
-        else if(( (s .eq. 1) .and. (lp .eq. j-1) .and. (l .eq. j-1) ))then
-            av18pot=vpw(1,1)
-        else if(( (s .eq. 1) .and. (lp .eq. j+1) .and. (l .eq. j-1) ))then
-            av18pot=vpw(2,1)
-        else if(( (s .eq. 1) .and. (lp .eq. j-1) .and. (l .eq. j+1) ))then
-            call av18pw(lpot,l-2,s,j,t,t1z,t2z,r,vpw)
-            av18pot=vpw(1,2)
-        else
-            write(*,*) "error"
+            write(*,*) "av18pot: internal index error (coupled): l,lp,j,s=", l,lp,j,s
             return
         end if
     else
-        write(*,*) "error"
-        return
+        ! Uncoupled channels: off-diagonal matrix elements are not defined.
+        if (lp .ne. l) then
+            write(*,*) "av18pot: requested off-diagonal for uncoupled channel: l,lp=", l,lp
+            return
+        end if
+        lcall = l
+        call av18pw(lpot, lcall, s, j, t, t1z, t2z, r, vpw)
+        av18pot = vpw(1,1)
     end if
 
     return

@@ -373,12 +373,25 @@ class two_nucleon_potential:
     # Nonlocal projection based on Eq. (12) in K. A. Wendt, R. J. Furnstahl, and S. Ramanan, Phys. Rev. C 86, 014003 (2012).
     @lru_cache(maxsize=None)
     def nonlocal_projection(self, ll, l, pp, p, j, s, tz):
-        temp = 0
-        norm = 2 / np.pi
-        for idx, r in enumerate(self.rmesh_points):
-            w = self.rmesh_weights[idx]
-            temp = temp + (r**2) * w * spherical_jn(l, p * r / const.hbarc) * spherical_jn(ll, pp * r / const.hbarc) * self.potential_local(ll, l, s, j, tz, r)
-        return temp * norm / const.hbarc**3
+        fac = 2.0 / np.pi
+
+        r = self.rmesh_points
+        w = self.rmesh_weights
+
+        x = (p * r) / const.hbarc
+        xp = (pp * r) / const.hbarc
+
+        jl = spherical_jn(l, x)
+        jll = spherical_jn(ll, xp)
+
+        vr = np.empty_like(r, dtype=float)
+        for idx, ri in enumerate(r):
+            vr[idx] = self.potential_local(ll, l, s, j, tz, ri)
+
+        integrand = (r**2) * w * jl * jll * vr
+        pot = np.sum(integrand)
+
+        return fac * pot / (const.hbarc**3)
 
     @staticmethod
     def legP(m, n, x):
