@@ -491,7 +491,7 @@ class two_nucleon_potential:
         return channels_pp + channels_pn + channels_nn
 
     # Writter of interaction matrix elements in momentum space, where [kmax] = fm^(-1).
-    # The resulting interaction mtx are in [MeV fm^(-3)].
+    # The resulting interaction mtx are in [MeV fm^(3)].
     def write_mtx_momentum(self, kmax=8.0, N=100, Jmax=8):
         t1 = time.time()
         # this value of hw is in line with Miyagi's code,
