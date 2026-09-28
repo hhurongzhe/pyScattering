@@ -8,7 +8,6 @@ import numpy as np
 import nn_studio as nn_studio
 import chiral_potential as chiral_potential
 
-
 utility.header_message()
 
 
@@ -17,16 +16,11 @@ utility.section_message("Initialization")
 
 t1 = time.time()
 
-nn = nn_studio.nn_studio(jmin=0, jmax=1, tz=0, Np=100)
+nn = nn_studio.nn_studio(jmin=0, jmax=3, tz=0, Np=100)
 
 # define the lab neutron-proton kinetic energies that you want to analyze (denser for low T in this case)
-# nn.Tlabs = (
-#     [1e-3]
-#     + [x / 10 for x in np.arange(1, 11, 0.1)]
-#     + [x for x in np.arange(2, 31, 1)]
-#     + [x for x in np.arange(40, 500, 10)]
-# )
-nn.Tlabs = [1, 5, 10, 25, 50, 100, 150, 200, 250, 300]
+nn.Tlabs = [1e-3] + [x / 10 for x in np.arange(1, 11, 0.1)] + [x for x in np.arange(2, 31, 1)] + [x for x in np.arange(40, 300, 10)]
+# nn.Tlabs = [1, 5, 10, 25, 50, 100, 150, 200, 250, 300]
 
 # initialize an object for the chiral interaction
 potential = chiral_potential.two_nucleon_potential("n3loemn500")

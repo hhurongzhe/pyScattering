@@ -31,11 +31,8 @@ def laguerre_poly(degree: int, alpha: float, x: float):
     poly_ip1 = minus_x_plus_alpha_plus_one
 
     for i in range(1, degree):
-        poly_im1, poly_i, poly_ip1 = (
-            poly_i,
-            poly_ip1,
-            ((minus_x_plus_alpha_plus_one + 2 * i) * poly_i - (i + alpha) * poly_im1) / (i + 1.0),
-        )
+        poly_im1, poly_i = poly_i, poly_ip1
+        poly_ip1 = ((minus_x_plus_alpha_plus_one + 2 * i) * poly_i - (i + alpha) * poly_im1) / (i + 1.0)
 
     return poly_ip1
 
@@ -87,6 +84,7 @@ def F(l, eta, z):
 
 def G(l, eta, z):
     return float(mpmath.coulombg(l, eta, z))
+
 
 def dF(l, eta, z):
     return float(mpmath.diff(lambda x: mpmath.coulombf(l, eta, x), z))

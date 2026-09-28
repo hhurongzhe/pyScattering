@@ -1,5 +1,9 @@
 {
   "fortran.fortls.disabled": true,
   "python.analysis.extraPaths": ["./lib","./deps"],
-  "python.autoComplete.extraPaths": ["./lib","./deps"]
+  "python.autoComplete.extraPaths": [
+    "./lib",
+    "./deps"
+  ],
+  "python-envs.defaultEnvManager": "ms-python.python:system"
 }

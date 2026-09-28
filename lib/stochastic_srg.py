@@ -4,8 +4,11 @@ sys.path.append("./deps")
 
 import math
 import random
+import warnings
 import numpy as np
 from typing import List, Tuple, Iterable
+from scipy.integrate import solve_ivp
+from scipy.interpolate import RegularGridInterpolator
 import chiral_potential
 import constants as const
 import basic_math
@@ -58,11 +61,14 @@ class sSRG:
         self.energy_loops_trace: List[List[float]] = []
         self.shift_loops_trace: List[List[float]] = []
         self.mtx_trace: List[np.ndarray] = []
+        self.phase_Tlabs: np.ndarray = np.array(params.get("phase_Tlabs", []), dtype=float)
+        self.phase_loops_trace: List[np.ndarray] = []
 
     # commutator, arguments A and B matrices
     @staticmethod
     def commutator(A, B):
-        return A @ B - B @ A
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            return A @ B - B @ A
 
     # make the matrix symmetric
     @staticmethod
@@ -151,6 +157,54 @@ class sSRG:
     def setup_generator(self):
         self.eta = self.commutator(self.Tkin, self.H0)
         print("finish setting up initial generator matrix.")
+
+    @staticmethod
+    def dVds_exact(s: float, V: np.ndarray, Nrows: int, Tkin: np.ndarray):
+        V_reshape = np.reshape(V, (Nrows, Nrows))
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            dV = sSRG.commutator(sSRG.commutator(Tkin, V_reshape), Tkin + V_reshape)
+        return np.reshape(dV, V.size)
+
+    def solve_exact_srg(self, method: str = "RK45", rtol: float = 1e-8, atol: float = 1e-8, max_step: float = None):
+        if max_step is None:
+            max_step = self.s_target / max(self.steps, 1)
+        old_err = np.seterr(divide="ignore", over="ignore", invalid="ignore")
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            try:
+                solution = solve_ivp(
+                    self.dVds_exact,
+                    [0.0, self.s_target],
+                    self.V0.ravel(),
+                    method=method,
+                    t_eval=[self.s_target],
+                    args=(self.V0.shape[0], self.Tkin),
+                    rtol=rtol,
+                    atol=atol,
+                    max_step=max_step,
+                )
+            finally:
+                np.seterr(**old_err)
+        if not solution.success:
+            raise RuntimeError("Exact SRG ODE solver failed:\n" + solution.message)
+        V_weighted = solution.y[:, -1].reshape(self.V0.shape)
+        if not np.isfinite(V_weighted).all():
+            raise RuntimeError("Exact SRG ODE solver returned non-finite matrix elements.")
+        return self.undress_weights(np.array(V_weighted, copy=True))
+
+    def lab2rel(self, Tlab: float, tz: int):
+        if tz == -1:
+            mu = const.Mp / 2
+            ko2 = 0.5 * const.Mp * Tlab
+        elif tz == 0:
+            mu = const.Mp * const.Mn / (const.Mp + const.Mn)
+            ko2 = const.Mp**2 * Tlab * (Tlab + 2 * const.Mn) / ((const.Mp + const.Mn) ** 2 + 2 * Tlab * const.Mp)
+        elif tz == 1:
+            mu = const.Mn / 2
+            ko2 = 0.5 * const.Mn * Tlab
+        else:
+            raise ValueError(f"invalid isospin projection: {tz}")
+        return np.sqrt(ko2), mu
 
     # Dress the weights for mtx, MeV^(-2) to MeV
     def dress_weights(self, mtx: np.ndarray):
@@ -319,6 +373,117 @@ class sSRG:
         std_mtx = np.std(stacked_mtx, axis=0, ddof=1)
         return mean_mtx, std_mtx
 
+    @staticmethod
+    def get_phase_stat_array(arr, period: float = 180.0):
+        stacked_arr = np.array(arr, dtype=float)
+        reference = np.median(stacked_arr, axis=0)
+        centered = (stacked_arr - reference + 0.5 * period) % period - 0.5 * period
+        aligned_arr = reference + centered
+        mean_arr = np.mean(aligned_arr, axis=0)
+        std_arr = np.std(aligned_arr, axis=0, ddof=1)
+        return mean_arr, std_arr
+
+    @staticmethod
+    def compute_phase_shift_uncoupled(ko, mu, T):
+        rad2deg = 180.0 / np.pi
+        fac = np.pi * mu * ko
+        S = 1 - 2j * fac * T
+        delta = (-0.5j) * np.log(S)
+        return np.real(delta * rad2deg)
+
+    @staticmethod
+    def compute_phase_shift_coupled(ko, mu, T11, T12, T22):
+        rad2deg = 180.0 / np.pi
+        fac = np.pi * mu * ko
+        two_epsilon_bb = np.arctan(2 * T12 / (T11 - T22))
+        delta_plus_bb = -0.5j * np.log(1 - 1j * fac * (T11 + T22) + 1j * fac * (2 * T12) / np.sin(two_epsilon_bb))
+        delta_minus_bb = -0.5j * np.log(1 - 1j * fac * (T11 + T22) - 1j * fac * (2 * T12) / np.sin(two_epsilon_bb))
+
+        cos2e = np.cos(two_epsilon_bb / 2) ** 2
+        cos_2dp = np.cos(2 * delta_plus_bb)
+        cos_2dm = np.cos(2 * delta_minus_bb)
+        sin_2dp = np.sin(2 * delta_plus_bb)
+        sin_2dm = np.sin(2 * delta_minus_bb)
+
+        aR = np.real(cos2e * cos_2dm + (1 - cos2e) * cos_2dp)
+        aI = np.real(cos2e * sin_2dm + (1 - cos2e) * sin_2dp)
+        delta_minus = 0.5 * np.arctan2(aI, aR)
+
+        aR = np.real(cos2e * cos_2dp + (1 - cos2e) * cos_2dm)
+        aI = np.real(cos2e * sin_2dp + (1 - cos2e) * sin_2dm)
+        delta_plus = 0.5 * np.arctan2(aI, aR)
+
+        tmp = 0.5 * np.sin(two_epsilon_bb)
+        aR = tmp * (cos_2dm - cos_2dp)
+        aI = tmp * (sin_2dm - sin_2dp)
+        tmp = delta_plus + delta_minus
+        epsilon = 0.5 * np.arcsin(aI * np.cos(tmp) - aR * np.sin(tmp))
+
+        if ko < 150 and delta_minus < 0:
+            delta_minus += np.pi
+            epsilon *= -1.0
+        return np.real(np.array([delta_minus, delta_plus, epsilon]) * rad2deg)
+
+    def setup_phase_G0_vector(self, is_coupled: bool, ko: float, mu: float):
+        G0_vec = np.zeros(self.num_mesh + 1, dtype=complex)
+        G0_vec[: self.num_mesh] = 2 * mu * self.weight_q * self.mesh_q**2 / (ko**2 - self.mesh_q**2)
+        G0_vec[self.num_mesh] = -2 * mu * np.sum(self.weight_q / (ko**2 - self.mesh_q**2)) * ko**2 - 1j * np.pi * ko * mu
+        return G0_vec
+
+    def solve_phase_lippmann_schwinger(self, is_coupled: bool, Vmtx: np.ndarray, ko: float, mu: float):
+        G0_vec = self.setup_phase_G0_vector(is_coupled, ko, mu)
+        VG0 = np.zeros(Vmtx.shape, dtype=complex)
+        if not is_coupled:
+            for i in range(self.num_mesh + 1):
+                VG0[:, i] = Vmtx[:, i] * G0_vec[i]
+        else:
+            for i in range(2 * (self.num_mesh + 1)):
+                VG0[:, i] = Vmtx[:, i] * G0_vec[i % (self.num_mesh + 1)]
+        Id = np.identity(Vmtx.shape[0])
+        return np.linalg.solve(Id - VG0, Vmtx)
+
+    def interpolate_block(self, block: np.ndarray, points: np.ndarray):
+        interpolator = RegularGridInterpolator((self.mesh_q, self.mesh_q), block, bounds_error=False, fill_value=None)
+        pp, p = np.meshgrid(points, points, indexing="ij")
+        queries = np.column_stack((pp.ravel(), p.ravel()))
+        return interpolator(queries).reshape(points.size, points.size)
+
+    def build_phase_potential(self, V: np.ndarray, ko: float):
+        points = np.hstack((self.mesh_q, ko))
+        if not self.coupled_channel:
+            return self.interpolate_block(V, points)
+
+        Nq = self.num_mesh
+        Vmm = self.interpolate_block(V[:Nq, :Nq], points)
+        Vmp = self.interpolate_block(V[:Nq, Nq:], points)
+        Vpm = self.interpolate_block(V[Nq:, :Nq], points)
+        Vpp = self.interpolate_block(V[Nq:, Nq:], points)
+        return np.block([[Vmm, Vmp], [Vpm, Vpp]])
+
+    def compute_phase_shifts(self, V: np.ndarray):
+        if self.phase_Tlabs.size == 0:
+            return np.array([])
+        phase_shifts = []
+        if not self.coupled_channel:
+            ll, l, j, s, tz = self.quantum_numbers
+            for Tlab in self.phase_Tlabs:
+                ko, mu = self.lab2rel(Tlab, tz)
+                Vmtx = self.build_phase_potential(V, ko)
+                Tmtx = self.solve_phase_lippmann_schwinger(False, Vmtx, ko, mu)
+                phase_shifts.append(self.compute_phase_shift_uncoupled(ko, mu, Tmtx[-1, -1]))
+            return np.array(phase_shifts)
+
+        for Tlab in self.phase_Tlabs:
+            ko, mu = self.lab2rel(Tlab, 0)
+            Vmtx = self.build_phase_potential(V, ko)
+            Tmtx = self.solve_phase_lippmann_schwinger(True, Vmtx, ko, mu)
+            Np = self.num_mesh
+            Tmm = Tmtx[Np, Np]
+            Tmp = Tmtx[Np, 2 * Np + 1]
+            Tpp = Tmtx[2 * Np + 1, 2 * Np + 1]
+            phase_shifts.append(self.compute_phase_shift_coupled(ko, mu, Tmm, Tmp, Tpp))
+        return np.array(phase_shifts)
+
     def step(self):
         self.seed += 1
         random.seed(self.seed)
@@ -388,7 +553,10 @@ class sSRG:
         print(f"!{'loop':>5}{'step':>12}{'S':>16}{'E':>16}{'Nw':>16}")
         for l in range(self.loops):
             self.walkers.clear()
+            self.new_walkers.clear()
             self.initialize_walkers()
+            self.eta = self.commutator(self.Tkin, self.H0)
+            self.S = 0.0
             new_num = self.get_number()
             old_num = new_num
             tau_trace_this_loop = []
@@ -415,5 +583,8 @@ class sSRG:
             self.number_loops_trace.append(number_trace_this_loop)
             self.energy_loops_trace.append(energy_trace_this_loop)
             self.shift_loops_trace.append(shift_trace_this_loop)
-            self.mtx_trace.append(self.get_V())
+            V_loop = self.get_V()
+            self.mtx_trace.append(V_loop)
+            if self.phase_Tlabs.size > 0:
+                self.phase_loops_trace.append(self.compute_phase_shifts(V_loop))
             print("! evolution ends")

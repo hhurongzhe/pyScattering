@@ -16,8 +16,8 @@ def read_phase_shift_data(file_path, name):
 
 
 chan = "np"
-int_names = ["av18"]
-int_labels = [r"$\mathrm{av18}$"]
+int_names = ["n3loemn500"]
+int_labels = [r"N$^3$LOEMN(500)"]
 int_colors = ["C0", "C1", "C2", "C3", "C4", "C9"]
 pw_labels = [r"^1S_0", r"^3P_0", r"\epsilon_1", r"^1D_2", r"^1P_1", r"^3P_1", r"^3D_2", r"^3P_2", r"^3S_1", r"^3D_1", r"\epsilon_2", r"^3D_3"]
 pw_names = ["1S0", "3P0", "E1", "1D2", "1P1", "3P1", "3D2", "3P2", "3S1", "3D1", "E2", "3D3"]

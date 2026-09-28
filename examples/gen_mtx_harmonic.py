@@ -22,22 +22,24 @@ Mp = 938.27231
 Mn = 939.56563
 hc = 197.32705
 
-potential_type = "idaholocal1"
+potential_type = "n2loopt"
+include_coulomb = False
 hw = 16
 emax = 2
 e2max = 4
-JMAX = 10
+JMAX = 8
 verbose = True
-r_min, r_max, r_meshnumber = 1e-16, 20, 200
+p_min, p_max, p_meshnumber = 0.0, 8.0 * hc, 100  # MeV; cutoff = 8 fm^-1
 
 print(f"    potential type    : {potential_type}")
+print(f"    include Coulomb   : {include_coulomb}")
 print(f"    hw                : {hw}")
 print(f"    emax              : {emax}")
 print(f"    e2max             : {e2max}")
 print(f"    Jmax              : {JMAX}")
-print(f"    r min             : " + "%.0e" % r_min + " fm")
-print(f"    r max             : " + "%4.1f" % r_max + " fm")
-print(f"    r mesh numbers    : " + "%d" % r_meshnumber)
+print(f"    p min             : {p_min:.1f} MeV")
+print(f"    p max             : {p_max:.5f} MeV")
+print(f"    p mesh numbers    : {p_meshnumber}")
 
 ################################################################################################################
 
@@ -52,7 +54,7 @@ mu = Mp * Mn / (Mp + Mn)
 alpha = np.sqrt(mu * hw)
 potential = chiral_potential.two_nucleon_potential(potential_type)
 print(f"potential type : {potential_type}\n")
-r_points, r_weights = bm.gauss_legendre_line_mesh(r_min, r_max, r_meshnumber)
+p_points, p_weights = bm.gauss_legendre_line_mesh(p_min, p_max, p_meshnumber)
 ws.init(24, "Jmax", 9)
 
 t2 = time.time()
@@ -64,24 +66,24 @@ profiler.add_timing("Storing 6,9-j couplings", t2 - t1)
 # defines necessary functions.
 
 
-# potential in C.M. position space under LSJ basis,
-# r in fm and V in MeV.
+# Momentum-space LSJ block in MeV^-2; rows are p', columns are p.
 @lru_cache(maxsize=None)
-def v_LSJ_CM(ll: int, l: int, s: int, j: int, tz: int, r: float):
-    return potential.potential_local(ll, l, s, j, tz, r)
+def v_LSJ_CM(ll: int, l: int, s: int, j: int, tz: int):
+    return np.array([[potential.potential(ll, l, pp, p, j, s, tz) for p in p_points] for pp in p_points])
 
 
-# radial HO wave function.
+# Momentum HO radial function, normalized with p^2 dp, in MeV^(-3/2).
+# (-1)^n matches the radial Fourier phase used with these LSJ potentials.
 @lru_cache(maxsize=None)
-def HO_wf(n: int, l: int, a: float, r: float):
-    ar = a * r / hc
-    fac1 = np.power(2, n + l + 1)
-    tmp2 = math.factorial(n) * math.factorial(n + l) * np.power(a, 3) / np.sqrt(np.pi) / math.factorial(2 * n + 2 * l + 1)
-    fac2 = np.sqrt(tmp2)
-    fac3 = np.exp(-0.5 * ar * ar) * np.power(ar, l)
-    fac4 = bm.laguerre_poly(n, l + 0.5, ar * ar)
-    result = fac1 * fac2 * fac3 * fac4
-    return result
+def HO_wf_momentum(n: int, l: int, a: float, p: float):
+    x = p / a
+    norm = np.sqrt(2 * math.factorial(n) / math.gamma(n + l + 1.5)) / a**1.5
+    return (-1) ** n * norm * np.exp(-0.5 * x * x) * x**l * bm.laguerre_poly(n, l + 0.5, x * x)
+
+
+@lru_cache(maxsize=None)
+def HO_overlap(n: int, l: int, a: float):
+    return p_weights * p_points**2 * np.array([HO_wf_momentum(n, l, a, p) for p in p_points])
 
 
 @lru_cache(maxsize=None)
@@ -153,18 +155,36 @@ def moshinsky(
     return result
 
 
+@lru_cache(maxsize=None)
+def coulomb_radial_overlap(n: int, l: int, frequency: float):
+    # pp reduced mass should be used here.
+    r, w = bm.gauss_legendre_line_mesh(0.0, 40.0, 500)
+    nu = np.sqrt(0.5 * Mp * frequency) / hc
+    x = nu * r
+    norm = np.sqrt(2 * nu * math.factorial(n) / math.gamma(n + l + 1.5))
+    laguerre = np.array([bm.laguerre_poly(n, l + 0.5, xi * xi) for xi in x])
+    u = norm * x ** (l + 1) * np.exp(-0.5 * x * x) * laguerre
+    # u(r)=r R(r); coordinate-space HO functions have no (-1)^n phase.
+    return u * np.sqrt(w * hc / (137.035999 * r))
+
+
+@lru_cache(maxsize=None)
+def coulomb_harmonic_CM(nn: int, n: int, l: int, frequency: float):
+    return float(np.sum(coulomb_radial_overlap(nn, l, frequency) * coulomb_radial_overlap(n, l, frequency)))
+
+
 # potential in C.M. frame under HO basis.
 @lru_cache(maxsize=None)
 def v_harmonic_CM(nn: int, n: int, ll: int, l: int, s: float, j: float, t: int, a: float):
     t1 = time.time()
-    temp = 0
-    for idxr, r in enumerate(r_points):
-        wr = r_weights[idxr]
-        v = v_LSJ_CM(ll, l, s, j, t, r)
-        temp = temp + wr * (r**2) * HO_wf(nn, ll, a, r) * HO_wf(n, l, a, r) * v
+    bra = HO_overlap(nn, ll, a)
+    ket = HO_overlap(n, l, a)
+    temp = float(bra @ v_LSJ_CM(ll, l, s, j, t) @ ket)
+    if include_coulomb and t == -1 and ll == l and (l + s) % 2 == 0:
+        temp += coulomb_harmonic_CM(nn, n, l, hw)
     t2 = time.time()
     profiler.add_timing("From LSJ to HO", t2 - t1)
-    return temp / hc**3
+    return temp  # MeV: both momentum integrations use MeV, so no hc factor.
 
 
 # potential in lab frame under HO basis,
@@ -323,11 +343,11 @@ def gen_two_particle_basis(emax: int, e2max: int):
             parityab = 1 - 2 * ((la + lb) % 2)
             jabmin = np.abs(int((twoja - twojb) / 2))
             jabmax = np.abs(int((twoja + twojb) / 2))
+            if tza == 1 and tzb == -1:  # Keep pn order for every J.
+                idxa, idxb = idxb, idxa
             for jab in range(jabmin, jabmax + 1, 1):
                 if a == b and jab % 2 == 1:  # jab must be even if a=b.
                     continue
-                if tza == 1:  # switch to pn order
-                    idxa, idxb = idxb, idxa
                 temp.append((idxa, idxb, jab, parityab, tzab, e2ab))
     return temp
 
@@ -445,7 +465,8 @@ utility.section_message("Storing TBMEs")
 t5 = time.time()
 
 sp_orbit_file = "./result/sp-orbit.snt"
-TBME_file = f"./result/TBME-{potential_type}-hw{hw}-emax{emax}-e2max{e2max}.snt"
+coulomb_suffix = "-coulomb" if include_coulomb else ""
+TBME_file = f"./result/TBME-{potential_type}-hw{hw}-emax{emax}-e2max{e2max}{coulomb_suffix}.snt"
 
 # write_sp_orbit_to_file(sp_orbit_file, basis)
 write_2bme_to_file(TBME_file, channels)
